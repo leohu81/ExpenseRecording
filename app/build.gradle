@@ -1,0 +1,92 @@
+
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+apply plugin: 'com.google.devtools.ksp'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
+
+android {
+    namespace "com.leohu.expense"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.leohu.expense"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    buildFeatures {
+        compose true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    sourceSets {
+        main.java.srcDirs = ['src/main/kotlin']
+        androidTest.java.srcDirs = ['src/androidTest/kotlin']
+        test.java.srcDirs = ['src/test/kotlin']
+    }
+}
+
+dependencies {
+    def composeBom = platform("androidx.compose:compose-bom:2024.06.00")
+    implementation composeBom
+    androidTestImplementation composeBom
+
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.0.21"
+
+    // Core
+    implementation "androidx.core:core-ktx:1.13.1"
+    implementation "androidx.activity:activity-compose:1.9.0"
+    implementation "com.google.android.material:material:1.12.0"
+
+    // Compose
+    implementation "androidx.compose.ui:ui"
+    implementation "androidx.compose.ui:ui-tooling-preview"
+    implementation "androidx.compose.material3:material3:1.2.1"
+    implementation "androidx.compose.material:material-icons-extended"
+    implementation "androidx.navigation:navigation-compose:2.7.7"
+
+    debugImplementation "androidx.compose.ui:ui-tooling"
+
+    // Lifecycle / ViewModel
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.8.3"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3"
+
+    // Room (for local DB)
+    implementation "androidx.room:room-ktx:2.6.1"
+    ksp "androidx.room:room-compiler:2.6.1"
+
+    // WorkManager
+    implementation "androidx.work:work-runtime-ktx:2.9.0"
+
+    // Retrofit
+    implementation "com.squareup.retrofit2:retrofit:2.11.0"
+    implementation "com.squareup.retrofit2:converter-gson:2.11.0"
+    implementation "com.squareup.okhttp3:logging-interceptor:4.12.0"
+
+    // Coil
+    implementation "io.coil-kt:coil-compose:2.6.0"
+
+    // Testing
+    testImplementation "junit:junit:4.13.2"
+    androidTestImplementation "androidx.test.ext:junit:1.1.5"
+    androidTestImplementation "androidx.test.espresso:espresso-core:3.5.1"
+}
