@@ -4,7 +4,8 @@ import android.content.Context
 import android.net.Uri
 import android.util.Base64
 import com.leohu.expense.data.local.db.AppDatabase
-import com.leohu.expense.data.mapper.*
+import com.leohu.expense.data.mapper.toDomain
+import com.leohu.expense.data.mapper.toEntity
 import com.leohu.expense.data.remote.api.AgnesApi
 import com.leohu.expense.data.remote.api.WebhookApi
 import com.leohu.expense.data.remote.dto.*
@@ -30,6 +31,8 @@ class ExpenseRepositoryImpl(
     private val paymentRecordDao = db.paymentRecordDao()
     private val creditCardDao = db.creditCardDao()
     private val eWalletAccountDao = db.eWalletAccountDao()
+    private val tagDao = db.tagDao()
+    private val paymentRecordTagDao = db.paymentRecordTagDao()
     private val gson = Gson()
 
     override suspend fun enqueueSourceImage(localPath: String): String = withContext(Dispatchers.IO) {
@@ -72,6 +75,10 @@ class ExpenseRepositoryImpl(
 
     override suspend fun getSourceImageById(id: String): SourceImage? {
         return sourceImageDao.getById(id)?.toDomain()
+    }
+
+    override fun getAllSourceImages(): Flow<List<SourceImage>> {
+        return sourceImageDao.getAll().map { list -> list.map { it.toDomain() } }
     }
 
     override suspend fun updateSourceImage(image: SourceImage) {
@@ -152,60 +159,114 @@ class ExpenseRepositoryImpl(
     override suspend fun deleteEWalletAccount(account: EWalletAccount) {
         eWalletAccountDao.delete(account.toEntity())
     }
+
+    override fun getAllTags(): Flow<List<Tag>> {
+        return tagDao.getAll().map { list -> list.map { it.toDomain() } }
+    }
+
+    override suspend fun getTagById(id: String): Tag? {
+        return tagDao.getById(id)?.toDomain()
+    }
+
+    override suspend fun addTag(tag: Tag) {
+        tagDao.insert(tag.toEntity())
+    }
+
+    override suspend fun deleteTag(tag: Tag) {
+        tagDao.delete(tag.toEntity())
+    }
+
+    override suspend fun updateTag(tag: Tag) {
+        tagDao.update(tag.toEntity())
+    }
+
+    override suspend fun getTagsForPaymentRecord(paymentRecordId: String): Flow<List<Tag>> {
+        return paymentRecordTagDao.getTagsForPaymentRecord(paymentRecordId)
+            .map { entities ->
+                entities.mapNotNull { tagDao.getById(it.tagId)?.toDomain() }
+            }
+    }
+
+    override suspend fun addTagToPayment(paymentRecordId: String, tagId: String) {
+        val entity = com.leohu.expense.data.local.entity.PaymentRecordTagEntity(paymentRecordId, tagId)
+        paymentRecordTagDao.insert(entity)
+    }
+
+    override suspend fun removeTagFromPayment(paymentRecordId: String, tagId: String) {
+        val entity = com.leohu.expense.data.local.entity.PaymentRecordTagEntity(paymentRecordId, tagId)
+        paymentRecordTagDao.delete(entity)
+    }
     
     // Helper method for UploadAndParseWorker to use
-    suspend fun parseReceipt(imageId: String, imageFile: File, ewalletAccounts: List<EWalletAccount>): AgnesResponseDto {
+    suspend fun parseReceipt(
+        imageId: String,
+        imageFile: File,
+        ewalletAccounts: List<EWalletAccount>,
+        creditCards: List<CreditCard> = emptyList()
+    ): AgnesResponseDto {
         val imageBytes = imageFile.readBytes()
         val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
         val dataUri = "data:image/jpeg;base64,$base64Image"
         
-        val cards = creditCardDao.getAll().map { it.toDomain() }
+        // 確保優先使用傳入的列表，若無則從 DAO 讀取
+        val cards = if (creditCards.isNotEmpty()) creditCards else creditCardDao.getAll().map { it.toDomain() }.filter { it.isActive }
+        val activeEWallets = if (ewalletAccounts.isNotEmpty()) ewalletAccounts else eWalletAccountDao.getAll().map { it.toDomain() }.filter { it.isActive }
 
-        val ewalletContext = if (ewalletAccounts.isNotEmpty()) {
+        val ewalletContext = if (activeEWallets.isNotEmpty()) {
             "Known E-Wallet accounts and their keywords for reference:\n" + 
-            ewalletAccounts.joinToString("\n") { "- ${it.name}: keywords=[${it.keywords.joinToString()}]" }
-        } else ""
+            activeEWallets.joinToString("\n") { account -> 
+                "- ${account.name}: keywords='${account.keywords.joinToString()}'"
+            }
+        } else {
+            "Known E-Wallet accounts: (None configured)"
+        }
 
         val cardContext = if (cards.isNotEmpty()) {
             "Known Credit Cards for reference:\n" +
-            cards.joinToString("\n") { "- ${it.name}: last4 digits=${it.last4 ?: "Unknown"}" }
-        } else ""
-
-        val prompt = """
-            Analyze the attached receipt image. Extract all transactions. 
-            
-            $ewalletContext
-            
-            $cardContext
-            
-            Strict Instructions:
-            1. **Determine 'method' (Priority Rule)**: 
-               - Scan the entire image for E-Wallet keywords (e.g., '全點', '全支付', 'Line Points', '街口'). 
-               - If any keyword matches a known E-Wallet, set 'method' to that E-Wallet's name.
-               - ONLY if no E-Wallet keywords are found, set 'method' to "一般刷卡" (if a card is used) or "現金".
-            2. **Identify 'account' (Funding Source)**: 
-               - If a credit card was used (either directly or via an E-Wallet), match it against the "Known Credit Cards" list.
-               - Use the EXACT card name from the list for 'account'.
-               - Extract the last 4 digits for 'card_last4'.
-            3. **Data Extraction**: Extract 'amount', 'currency' (default TWD), 'date' (YYYY/MM/DD), and 'description' (merchant name).
-            
-            Output strictly in JSON format following this schema:
-            {
-              "schema_version": 1,
-              "transactions": [
-                {
-                  "method": "string",
-                  "account": "string or null",
-                  "card_last4": "string or null",
-                  "amount": number,
-                  "currency": "string",
-                  "date": "string",
-                  "description": "string"
-                }
-              ],
-              "confidence": number
+            cards.joinToString("\n") { card -> 
+                "- ${card.name}: last4 digits=${card.last4 ?: "Unknown"}" 
             }
-        """.trimIndent()
+        } else {
+            "Known Credit Cards: (None configured)"
+        }
+
+        val prompt = StringBuilder().apply {
+            appendLine("Analyze the attached receipt image. Extract all transactions.")
+            appendLine()
+            appendLine(ewalletContext)
+            appendLine()
+            appendLine(cardContext)
+            appendLine()
+            appendLine("Strict Instructions:")
+            appendLine("1. **Determine 'method' (Priority Rule)**: ")
+            appendLine("   - Scan the entire image for E-Wallet keywords (e.g., '全點', '全支付', 'Line Points', '街口').")
+            appendLine("   - If any keyword matches a known E-Wallet, set 'method' to that E-Wallet's name.")
+            appendLine("   - ONLY if no E-Wallet keywords are found, set 'method' to \"一般刷卡\" (if a card is used) or \"現金\".")
+            appendLine("2. **Identify 'account' (Funding Source)**: ")
+            appendLine("   - If a credit card was used (either directly or via an E-Wallet), match it against the \"Known Credit Cards\" list.")
+            appendLine("   - Use the EXACT card name from the list for 'account'.")
+            appendLine("   - Extract the last 4 digits for 'card_last4'.")
+            appendLine("3. **Data Extraction**: Extract 'amount', 'currency' (default TWD), 'date' (YYYY/MM/DD), and 'description' (merchant name).")
+            appendLine()
+            appendLine("Output strictly in JSON format following this schema:")
+            appendLine("{")
+            appendLine("  \"schema_version\": 1,")
+            appendLine("  \"transactions\": [")
+            appendLine("    {")
+            appendLine("      \"method\": \"string\",")
+            appendLine("      \"account\": \"string or null\",")
+            appendLine("      \"card_last4\": \"string or null\",")
+            appendLine("      \"amount\": number,")
+            appendLine("      \"currency\": \"string\",")
+            appendLine("      \"date\": \"string\",")
+            appendLine("      \"description\": \"string\"")
+            appendLine("    }")
+            appendLine("  ],")
+            appendLine("  \"confidence\": number")
+            appendLine("}")
+        }.toString()
+
+        android.util.Log.d("ExpenseApp", "=== 送給 LLM 的完整 Prompt ===\n$prompt")
 
         val request = AgnesRequest(
             messages = listOf(
@@ -223,8 +284,21 @@ class ExpenseRepositoryImpl(
         val response = api.chat("Bearer $apiKey", request)
         val content = response.choices.firstOrNull()?.message?.content ?: throw Exception("Agnes 回傳空內容")
         
-        // Clean JSON if LLM includes markdown blocks
-        val jsonContent = content.replace("```json", "").replace("```", "").trim()
+        // 更魯棒的 JSON 提取邏輯：使用正則表達式尋找 JSON 區塊
+        val jsonRegex = "```json\\n?(.*?)```".toRegex(RegexOption.DOT_MATCHES_ALL)
+        val match = jsonRegex.find(content)
+        val jsonContent = if (match != null) {
+            match.groupValues[1].trim()
+        } else {
+            // 如果沒找到 markdown 標籤，嘗試尋找第一個 { 和最後一個 }
+            val start = content.indexOf('{')
+            val end = content.lastIndexOf('}')
+            if (start != -1 && end != -1 && end > start) {
+                content.substring(start, end + 1).trim()
+            } else {
+                content.trim()
+            }
+        }
         
         return try {
             gson.fromJson(jsonContent, AgnesResponseDto::class.java)

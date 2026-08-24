@@ -1,17 +1,26 @@
 package com.leohu.expense.ui.feature.approval
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.leohu.expense.domain.model.PaymentStatus
+import com.leohu.expense.domain.model.Tag
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -23,6 +32,7 @@ fun ApprovalDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showTagDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.isApproved) {
         if (uiState.isApproved) {
@@ -35,6 +45,16 @@ fun ApprovalDetailScreen(
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
         }
+    }
+
+    if (showTagDialog) {
+        SelectTagDialog(
+            tags = uiState.tags,
+            selectedTagIds = uiState.record?.tags ?: emptyList(),
+            onDismiss = { showTagDialog = false },
+            onSelect = { tagId -> viewModel.addTagToRecord(tagId) },
+            onDeselect = { tagId -> viewModel.removeTagFromRecord(tagId) }
+        )
     }
 
     Scaffold(
@@ -52,7 +72,7 @@ fun ApprovalDetailScreen(
     ) { padding ->
         val record = uiState.record
         if (uiState.isLoading || record == null) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
         } else {
@@ -76,6 +96,50 @@ fun ApprovalDetailScreen(
                         contentScale = ContentScale.Fit
                     )
                 }
+
+                // Tag 區域 - 移到上方更顯眼
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("消費標籤", style = MaterialTheme.typography.titleSmall)
+                        if (!isReadOnly) {
+                            TextButton(onClick = { showTagDialog = true }) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("編輯標籤")
+                            }
+                        }
+                    }
+                    
+                    if (record.tags.isEmpty()) {
+                        Text("尚無標籤", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        // 使用簡單的 Row 包裝，支援捲動
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            record.tags.forEach { tagId ->
+                                uiState.tagMap[tagId]?.let { tag ->
+                                    SuggestionChip(
+                                        onClick = { if (!isReadOnly) showTagDialog = true },
+                                        label = { Text(tag.name) },
+                                        colors = SuggestionChipDefaults.suggestionChipColors(
+                                            containerColor = Color(android.graphics.Color.parseColor(tag.color)).copy(alpha = 0.3f)
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider()
 
                 TextField(
                     value = record.description ?: "",
@@ -202,4 +266,57 @@ fun ApprovalDetailScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SelectTagDialog(
+    tags: List<Tag>,
+    selectedTagIds: List<String>,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    onDeselect: (String) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("選擇標籤") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (tags.isEmpty()) {
+                    Text("請先到設定中建立標籤", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    tags.forEach { tag ->
+                        val isSelected = selectedTagIds.contains(tag.id)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { if (isSelected) onDeselect(tag.id) else onSelect(tag.id) }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(android.graphics.Color.parseColor(tag.color)))
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(tag.name)
+                            }
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = { if (isSelected) onDeselect(tag.id) else onSelect(tag.id) }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("完成")
+            }
+        }
+    )
 }

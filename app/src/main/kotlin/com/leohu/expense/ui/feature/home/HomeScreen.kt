@@ -3,9 +3,13 @@ package com.leohu.expense.ui.feature.home
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
@@ -18,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import com.leohu.expense.util.PreferenceHelper
 import java.io.File
 import java.util.*
 
@@ -27,13 +32,28 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onNavigateToApproval: () -> Unit,
     onNavigateToHistory: () -> Unit,
-    onNavigateToCards: () -> Unit,
-    onNavigateToEWallets: () -> Unit,
-    onNavigateToSettings: () -> Unit
+    onNavigateToFailedList: () -> Unit,
+    onNavigateToSettings: () -> Unit,
+    onNavigateToPreParseEdit: (List<String>) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var showAddOptions by remember { mutableStateOf(false) }
+    val preferenceHelper = (context.applicationContext as com.leohu.expense.app.ExpenseApplication).preferenceHelper
+    val scrollState = rememberScrollState()
+
+    // Request Notification Permission on Android 13+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
 
     fun launchCameraInternal(uriCallback: (Uri) -> Unit) {
         val file = File(context.filesDir, "Pictures").apply { mkdirs() }
@@ -46,20 +66,34 @@ fun HomeScreen(
         uriCallback(uri)
     }
     
-    // Gallery Launcher
+    // Gallery Launcher for multiple images
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let { viewModel.onImageSelected(context, it) }
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            viewModel.onImagesSelected(
+                context = context,
+                uris = uris,
+                shouldEdit = preferenceHelper.getBool(PreferenceHelper.KEY_ENABLE_PRE_PARSE_EDIT, false),
+                onNavigateToEdit = onNavigateToPreParseEdit
+            )
+        }
     }
 
     // Camera Launcher
     var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
-    ) { success ->
+    ) { success: Boolean ->
         if (success) {
-            cameraImageUri?.let { viewModel.onImageSelected(context, it) }
+            cameraImageUri?.let { uri ->
+                viewModel.onImagesSelected(
+                    context = context,
+                    uris = listOf(uri),
+                    shouldEdit = preferenceHelper.getBool(PreferenceHelper.KEY_ENABLE_PRE_PARSE_EDIT, false),
+                    onNavigateToEdit = onNavigateToPreParseEdit
+                )
+            }
         }
     }
 
@@ -125,27 +159,27 @@ fun HomeScreen(
             modifier = Modifier
                 .padding(padding)
                 .padding(16.dp)
-                .fillMaxSize(),
+                .fillMaxSize()
+                .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("收據解析狀態", style = MaterialTheme.typography.titleMedium)
+                    Text("收據處理狀態", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("等待壓縮/解析: ${uiState.pendingImageCount}")
-                    Text("正在解析中: ${uiState.processingImageCount}")
-                    Text("解析完成: ${uiState.readyImageCount}")
-                    Text("解析失敗: ${uiState.failedImageCount}", color = MaterialTheme.colorScheme.error)
-
-                    if (uiState.failedImages.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        uiState.failedImages.forEach { image ->
-                            Text(
-                                text = "錯誤: ${image.lastError ?: "未知原因"}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
+                    Text("截圖處理: ${uiState.pendingImageCount}")
+                    Text("分析中: ${uiState.processingImageCount}")
+                    Text("待核准: ${uiState.pendingApprovalCount}")
+                    if (uiState.failedImageCount > 0) {
+                        Text(
+                            "解析失敗: ${uiState.failedImageCount}", 
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.clickable {
+                                onNavigateToFailedList()
+                            }
+                        )
+                    } else {
+                        Text("解析失敗: ${uiState.failedImageCount}", color = MaterialTheme.colorScheme.error)
                     }
                 }
             }
@@ -162,18 +196,7 @@ fun HomeScreen(
                 onClick = onNavigateToHistory,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("查看歷史記錄")
-            }
-
-            HorizontalDivider()
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onNavigateToCards, modifier = Modifier.weight(1f)) {
-                    Text("信用卡")
-                }
-                OutlinedButton(onClick = onNavigateToEWallets, modifier = Modifier.weight(1f)) {
-                    Text("電子支付")
-                }
+                Text("查看全部記錄")
             }
 
             OutlinedButton(onClick = onNavigateToSettings, modifier = Modifier.fillMaxWidth()) {

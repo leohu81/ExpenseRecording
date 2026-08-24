@@ -13,6 +13,9 @@ interface SourceImageDao {
     @Query("SELECT * FROM source_images WHERE status = :status")
     fun getByStatus(status: SourceImageStatus): Flow<List<SourceImageEntity>>
 
+    @Query("SELECT * FROM source_images ORDER BY createdAt DESC")
+    fun getAll(): Flow<List<SourceImageEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entity: SourceImageEntity)
 

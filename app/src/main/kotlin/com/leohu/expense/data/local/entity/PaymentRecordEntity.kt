@@ -16,6 +16,7 @@ data class PaymentRecordEntity(
     val consumeDate: String?,
     val description: String?,
     val status: PaymentStatus,
+    val tags: String?,  // 改為可 null
     val createdAt: Long,
     val approvedAt: Long?
 )

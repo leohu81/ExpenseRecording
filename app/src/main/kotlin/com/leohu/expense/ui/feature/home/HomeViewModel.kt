@@ -55,6 +55,35 @@ class HomeViewModel(private val repository: ExpenseRepository) : ViewModel() {
             WorkManager.getInstance(context).enqueue(compressRequest)
         }
     }
+    
+    /**
+     * 新增：處理多圖選取並根據是否需要編輯決定後續動作
+     */
+    fun onImagesSelected(
+        context: Context, 
+        uris: List<Uri>, 
+        shouldEdit: Boolean, 
+        onNavigateToEdit: (List<String>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val imageIds = uris.map { uri ->
+                repository.enqueueSourceImage(uri.toString())
+            }
+            
+            if (shouldEdit) {
+                // 傳遞乾淨的 UUID 列表給導航
+                onNavigateToEdit(imageIds)
+            } else {
+                // 直接啟動解析流程
+                imageIds.forEach { imageId ->
+                    val compressRequest = OneTimeWorkRequestBuilder<ImageCompressWorker>()
+                        .setInputData(workDataOf("image_id" to imageId))
+                        .build()
+                    WorkManager.getInstance(context).enqueue(compressRequest)
+                }
+            }
+        }
+    }
 
     class Factory(private val repository: ExpenseRepository) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {

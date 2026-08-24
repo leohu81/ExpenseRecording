@@ -1,8 +1,10 @@
 package com.leohu.expense.domain.model
 
+import com.google.gson.annotations.SerializedName
+
 data class EWalletAccount(
-    val id: String,
-    val name: String,
-    val keywords: List<String>,
-    val isActive: Boolean = true
+    @SerializedName("id") val id: String,
+    @SerializedName("name") val name: String,
+    @SerializedName("keywords") val keywords: List<String>,
+    @SerializedName("isActive") val isActive: Boolean = true
 )

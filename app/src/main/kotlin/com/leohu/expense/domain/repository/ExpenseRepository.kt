@@ -8,6 +8,7 @@ interface ExpenseRepository {
     suspend fun enqueueSourceImage(localPath: String): String
     fun getSourceImagesByStatus(status: SourceImageStatus): Flow<List<SourceImage>>
     suspend fun getSourceImageById(id: String): SourceImage?
+    fun getAllSourceImages(): Flow<List<SourceImage>>
     suspend fun updateSourceImage(image: SourceImage)
     
     // PaymentRecord
@@ -30,4 +31,14 @@ interface ExpenseRepository {
     suspend fun getAllEWalletAccounts(): List<EWalletAccount>
     suspend fun addEWalletAccount(account: EWalletAccount)
     suspend fun deleteEWalletAccount(account: EWalletAccount)
+
+    // Tag
+    fun getAllTags(): Flow<List<Tag>>
+    suspend fun getTagById(id: String): Tag?
+    suspend fun addTag(tag: Tag)
+    suspend fun deleteTag(tag: Tag)
+    suspend fun updateTag(tag: Tag)
+    suspend fun getTagsForPaymentRecord(paymentRecordId: String): Flow<List<Tag>>
+    suspend fun addTagToPayment(paymentRecordId: String, tagId: String)
+    suspend fun removeTagFromPayment(paymentRecordId: String, tagId: String)
 }

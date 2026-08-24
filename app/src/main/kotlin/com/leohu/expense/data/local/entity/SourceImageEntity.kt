@@ -11,5 +11,7 @@ data class SourceImageEntity(
     val createdAt: Long,
     val status: SourceImageStatus,
     val retryCount: Int,
-    val lastError: String?
+    val lastError: String?,
+    val preDescription: String?,
+    val tags: String? // 新增：逗號分隔的 Tag ID
 )

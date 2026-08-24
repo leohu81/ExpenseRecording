@@ -8,6 +8,8 @@ import com.leohu.expense.data.repository.ExpenseRepositoryImpl
 import com.leohu.expense.domain.model.PaymentRecord
 import com.leohu.expense.domain.model.PaymentStatus
 import com.leohu.expense.domain.model.SourceImageStatus
+import com.leohu.expense.util.NotificationHelper
+import kotlinx.coroutines.flow.firstOrNull
 import retrofit2.HttpException
 import java.io.File
 import java.util.*
@@ -27,7 +29,7 @@ class UploadAndParseWorker(
         return try {
             repository.updateSourceImage(sourceImage.copy(
                 status = SourceImageStatus.PROCESSING,
-                lastError = if (runAttemptCount > 0) "正在重試 (第 $runAttemptCount 次)..." else null
+                lastError = if (runAttemptCount > 0) "正在解析..." else null
             ))
             
             val imageFile = File(sourceImage.localPath)
@@ -40,8 +42,9 @@ class UploadAndParseWorker(
             }
 
             val ewalletAccounts = repository.getAllEWalletAccounts()
+            val cards = repository.getCreditCards().firstOrNull() ?: emptyList()
             
-            val response = repository.parseReceipt(imageId, imageFile, ewalletAccounts)
+            val response = repository.parseReceipt(imageId, imageFile, ewalletAccounts, cards)
             
             val paymentRecords = response.transactions.map { dto ->
                 PaymentRecord(
@@ -53,8 +56,11 @@ class UploadAndParseWorker(
                     amount = dto.amount,
                     currency = dto.currency,
                     consumeDate = dto.date,
-                    description = dto.description,
+                    // 優先使用使用者提供的事前說明
+                    description = sourceImage.preDescription ?: dto.description,
                     status = PaymentStatus.READY_FOR_APPROVAL,
+                    // 繼承使用者事前設定的 Tag
+                    tags = sourceImage.tags,
                     createdAt = System.currentTimeMillis()
                 )
             }
@@ -64,6 +70,13 @@ class UploadAndParseWorker(
                 status = SourceImageStatus.READY,
                 lastError = null
             ))
+
+            val count = paymentRecords.size
+            NotificationHelper.showParseResultNotification(
+                applicationContext,
+                true,
+                "成功解析出 $count 筆消費記錄，點擊前往核准。"
+            )
 
             Result.success()
         } catch (e: HttpException) {
@@ -79,15 +92,30 @@ class UploadAndParseWorker(
                 lastError = errorMessage,
                 retryCount = sourceImage.retryCount + 1
             ))
-            Result.failure() // HTTP 錯誤通常不需要立即重試，除非是 503 等
+
+            NotificationHelper.showParseResultNotification(
+                applicationContext,
+                false,
+                "解析失敗: $errorMessage"
+            )
+
+            Result.failure()
         } catch (e: Exception) {
             e.printStackTrace()
+            val errorMsg = e.message ?: "未知錯誤"
             repository.updateSourceImage(sourceImage.copy(
                 status = SourceImageStatus.FAILED,
-                lastError = "解析失敗: ${e.message ?: "未知錯誤"}",
+                lastError = "解析失敗: $errorMsg",
                 retryCount = sourceImage.retryCount + 1
             ))
-            Result.retry()
+
+            NotificationHelper.showParseResultNotification(
+                applicationContext,
+                false,
+                "解析失敗: $errorMsg"
+            )
+
+            Result.failure()
         }
     }
 }

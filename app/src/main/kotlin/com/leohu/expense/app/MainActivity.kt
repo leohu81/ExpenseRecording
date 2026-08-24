@@ -1,4 +1,3 @@
-
 package com.leohu.expense.app
 
 import android.os.Bundle
@@ -23,8 +22,7 @@ import com.leohu.expense.ui.feature.ewallets.EWalletListScreen
 import com.leohu.expense.ui.feature.ewallets.EWalletViewModel
 import com.leohu.expense.ui.feature.history.HistoryScreen
 import com.leohu.expense.ui.feature.history.HistoryViewModel
-import com.leohu.expense.ui.feature.home.HomeScreen
-import com.leohu.expense.ui.feature.home.HomeViewModel
+import com.leohu.expense.ui.feature.home.*
 import com.leohu.expense.ui.feature.settings.SettingsScreen
 import com.leohu.expense.ui.feature.settings.SettingsViewModel
 import com.leohu.expense.ui.theme.ExpenseAppTheme
@@ -47,9 +45,26 @@ class MainActivity : ComponentActivity() {
                             viewModel = viewModel,
                             onNavigateToApproval = { navController.navigate("approval_list") },
                             onNavigateToHistory = { navController.navigate("history") },
-                            onNavigateToCards = { navController.navigate("cards") },
-                            onNavigateToEWallets = { navController.navigate("ewallets") },
-                            onNavigateToSettings = { navController.navigate("settings") }
+                            onNavigateToFailedList = { navController.navigate("failed_list") },
+                            onNavigateToSettings = { navController.navigate("settings") },
+                            onNavigateToPreParseEdit = { imageIds ->
+                                navController.navigate("pre_parse_edit/${imageIds.joinToString(",")}")
+                            }
+                        )
+                    }
+                    composable(
+                        route = "pre_parse_edit/{imageIds}",
+                        arguments = listOf(navArgument("imageIds") { type = NavType.StringType })
+                    ) { backStackEntry ->
+                        val imageIdsStr = backStackEntry.arguments?.getString("imageIds") ?: ""
+                        val imageIds = imageIdsStr.split(",").filter { it.isNotEmpty() }
+                        val viewModel: PreParseEditViewModel = viewModel(
+                            factory = PreParseEditViewModel.Factory(repository, imageIds)
+                        )
+                        PreParseEditScreen(
+                            viewModel = viewModel,
+                            onNavigateBack = { navController.popBackStack() },
+                            onParseComplete = { navController.popBackStack() }
                         )
                     }
                     composable("approval_list") {
@@ -79,7 +94,35 @@ class MainActivity : ComponentActivity() {
                         HistoryScreen(
                             viewModel = viewModel,
                             onNavigateBack = { navController.popBackStack() },
-                            onNavigateToDetail = { recordId -> navController.navigate("approval_detail/$recordId") }
+                            onNavigateToDetail = { imageId, recordId -> 
+                                if (recordId != null) {
+                                    navController.navigate("approval_detail/$recordId")
+                                } else {
+                                    navController.navigate("failed_detail/$imageId")
+                                }
+                            }
+                        )
+                    }
+                    composable("failed_list") {
+                        val viewModel: FailedItemViewModel = viewModel(factory = FailedItemViewModel.Factory(repository))
+                        FailedItemListScreen(
+                            viewModel = viewModel,
+                            onNavigateBack = { navController.popBackStack() },
+                            onNavigateToDetail = { imageId -> navController.navigate("failed_detail/$imageId") }
+                        )
+                    }
+                    composable(
+                        route = "failed_detail/{imageId}",
+                        arguments = listOf(navArgument("imageId") { type = NavType.StringType })
+                    ) { backStackEntry ->
+                        val imageId = backStackEntry.arguments?.getString("imageId") ?: return@composable
+                        val viewModel: FailedItemDetailViewModel = viewModel(
+                            key = imageId,
+                            factory = FailedItemDetailViewModel.Factory(repository, imageId)
+                        )
+                        FailedItemDetailScreen(
+                            viewModel = viewModel,
+                            onNavigateBack = { navController.popBackStack() }
                         )
                     }
                     composable("cards") {
@@ -97,10 +140,18 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("settings") {
-                        val viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory(repository, cleanupUseCase))
+                        val viewModel: SettingsViewModel = viewModel(
+                            factory = SettingsViewModel.Factory(
+                                repository,
+                                cleanupUseCase,
+                                (application as ExpenseApplication).preferenceHelper
+                            )
+                        )
                         SettingsScreen(
                             viewModel = viewModel,
-                            onNavigateBack = { navController.popBackStack() }
+                            onNavigateBack = { navController.popBackStack() },
+                            onNavigateToCards = { navController.navigate("cards") },
+                            onNavigateToEWallets = { navController.navigate("ewallets") }
                         )
                     }
                 }

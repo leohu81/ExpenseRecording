@@ -9,11 +9,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.leohu.expense.domain.model.PaymentRecord
@@ -78,7 +74,7 @@ fun ApprovalListScreen(
                 val isSelected = selectedIds.contains(record.id)
                 ListItem(
                     headlineContent = { 
-                        Text("${record.amount} ${record.currency ?: "TWD"}") 
+                        Text("${formatAmountWithCurrency(record.amount, record.currency)}") 
                     },
                     supportingContent = { 
                         Column {
@@ -121,5 +117,13 @@ fun ApprovalListScreen(
                 HorizontalDivider()
             }
         }
+    }
+}
+
+private fun formatAmountWithCurrency(amount: Double, currency: String?): String {
+    val cur = currency ?: "TWD"
+    return when (cur.uppercase()) {
+        "TWD", "" -> "$amount"
+        else -> "$amount $cur"
     }
 }

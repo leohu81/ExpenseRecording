@@ -11,6 +11,7 @@ data class PaymentRecord(
     val consumeDate: String?,    // "YYYY/MM/DD"
     val description: String?,    // 商家名稱或說明
     val status: PaymentStatus,
+    val tags: List<String> = emptyList(),  // Tag ID 列表
     val createdAt: Long,
     val approvedAt: Long? = null
 )
