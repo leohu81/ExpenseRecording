@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>記帳助手 使用手冊</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Microsoft JhengHei', 'PingFang TC', 'Noto Sans TC', sans-serif;
+            line-height: 1.8; color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh; padding: 20px;
+        }
+        .container {
+            max-width: 900px; margin: 0 auto;
+            background: white; border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3); overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 40px 30px; text-align: center;
+        }
+        .header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        .header p { font-size: 1.1em; opacity: 0.9; }
+        .content { padding: 40px 30px; }
+        h2 { color: #667eea; font-size: 1.8em; margin: 30px 0 15px 0; padding-bottom: 10px; border-bottom: 3px solid #667eea; }
+        h3 { color: #764ba2; font-size: 1.4em; margin: 25px 0 12px 0; }
+        h4 { color: #555; font-size: 1.2em; margin: 20px 0 10px 0; }
+        p { margin: 10px 0; text-align: justify; }
+        ul, ol { margin: 15px 0; padding-left: 30px; }
+        li { margin: 8px 0; }
+        .screenshot { margin: 25px 0; text-align: center; }
+        .screenshot img {
+            max-width: 50%; height: auto; border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2); border: 3px solid #f0f0f0;
+        }
+        .screenshot-caption { margin-top: 10px; font-size: 0.9em; color: #666; font-style: italic; }
+        .tip-box {
+            background: linear-gradient(135deg, #fff9c4 0%, #fff59d 100%);
+            border-left: 5px solid #ffc107; padding: 20px; margin: 20px 0; border-radius: 10px;
+        }
+        .tip-box h4 { color: #f57c00; margin-top: 0; }
+        .warning-box {
+            background: linear-gradient(135deg, #ffcdd2 0%, #ef9a9a 100%);
+            border-left: 5px solid #f44336; padding: 20px; margin: 20px 0; border-radius: 10px;
+        }
+        .warning-box h4 { color: #c62828; margin-top: 0; }
+        .info-box {
+            background: linear-gradient(135deg, #bbdefb 0%, #90caf9 100%);
+            border-left: 5px solid #2196f3; padding: 20px; margin: 20px 0; border-radius: 10px;
+        }
+        .info-box h4 { color: #1565c0; margin-top: 0; }
+        code { background: #f5f5f5; padding: 2px 8px; border-radius: 4px; font-family: monospace; color: #e91e63; }
+        .toc {
+            background: #f8f9fa; padding: 25px; margin: 20px 0; border-radius: 10px;
+            border: 2px solid #e9ecef;
+        }
+        .toc h3 { margin-top: 0; color: #667eea; }
+        .toc ul { list-style: none; padding-left: 0; }
+        .toc li { padding: 5px 0; }
+        .toc a { color: #764ba2; text-decoration: none; transition: color 0.3s; }
+        .toc a:hover { color: #667eea; text-decoration: underline; }
+        .flow-diagram {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            padding: 20px; border-radius: 10px; text-align: center;
+            margin: 20px 0; font-size: 1.2em; font-weight: bold; color: #2e7d32;
+        }
+        footer { background: #333; color: white; text-align: center; padding: 20px; font-size: 0.9em; }
+        @media print { body { background: white; padding: 0; } .container { box-shadow: none; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📱 記帳助手</h1>
+            <p>AI 智慧消費記錄應用程式</p>
+            <p>使用手冊 v1.0</p>
+        </div>
+
+        <div class="content">
+            <div class="toc">
+                <h3>📋 目錄</h3>
+                <ul>
+                    <li><a href="#intro">1. 歡迎使用</a></li>
+                    <li><a href="#flow">2. 基本操作流程</a></li>
+                    <li><a href="#input">3. 輸入收據的三種方式</a></li>
+                    <li><a href="#settings">4. 環境設定</a></li>
+                    <li><a href="#preedit">5. 解析前編輯功能</a></li>
+                    <li><a href="#tags">6. 標籤 (Tag) 功能</a></li>
+                    <li><a href="#approve">7. 核准與管理記錄</a></li>
+                    <li><a href="#failed">8. 失敗處理</a></li>
+                    <li><a href="#backup">9. 資料備份與匯出</a></li>
+                    <li><a href="#tips">10. 使用小技巧</a></li>
+                    <li><a href="#faq">11. 常見問題</a></li>
+                </ul>
+            </div>
+
+            <h2 id="intro">1. 歡迎使用</h2>
+            <p>歡迎使用「記帳助手」！這是一款專為快速記錄消費而設計的 Android 應用程式，結合了 AI 智慧解析能力，讓您透過拍照或上傳收據圖片，自動識別消費資訊，輕鬆管理每一筆支出。</p>
+
+            <div class="info-box">
+                <h4>💡 核心功能</h4>
+                <ul>
+                    <li>📸 AI 智慧解析收據圖片</li>
+                    <li>💳 自動識別信用卡/電子支付</li>
+                    <li>🏷️ 支援標籤分類管理</li>
+                    <li>📊 支援 CSV 匯出備份</li>
+                    <li>🔄 支援多筆圖片同時處理</li>
+                </ul>
+            </div>
+
+            <h2 id="flow">2. 基本操作流程</h2>
+
+            <div class="flow-diagram">
+                輸入收據 → AI 智慧解析 → 確認資料 → 核准 → 存檔記錄
+            </div>
+
+            <h4>主畫面說明</h4>
+            <p>主畫面會顯示當前的處理進度，讓您一目了然：</p>
+            <ul>
+                <li><strong>截圖處理</strong>：已選取但尚未壓縮的圖片數量</li>
+                <li><strong>分析中</strong>：正在送給 AI 解析的圖片數量</li>
+                <li><strong>待核准</strong>：已解析完成，等待您確認的消費記錄數量</li>
+                <li><strong>解析失敗</strong>：解析失敗的項目數量（可點擊進入查看）</li>
+            </ul>
+
+            <div class="screenshot">
+                <img src="screenshots/main_screen.png" alt="主畫面截圖">
+                <div class="screenshot-caption">圖 1：記帳助手主畫面，顯示各階段處理進度</div>
+            </div>
+
+            <h4>多筆輸入功能</h4>
+            <p>您可以一次選取多張收據圖片，系統會自動建立排隊序列進行解析：</p>
+            <ul>
+                <li>每張圖片會獨立進行 AI 解析，不會互相影響</li>
+                <li>主畫面會即時顯示各階段的處理進度</li>
+                <li>解析完成後會發送通知提醒您</li>
+            </ul>
+
+            <h2 id="input">3. 輸入收據的三種方式</h2>
+
+            <h4>方式一：從其他應用程式分享</h4>
+            <ol>
+                <li>在檔案管理器、LINE、Email 或其他 App 中找到收據圖片</li>
+                <li>點擊「分享」按鈕</li>
+                <li>選擇「記帳助手」</li>
+                <li>圖片會自動進入解析流程</li>
+            </ol>
+
+            <h4>方式二：從相簿選取（支援多選）</h4>
+            <ol>
+                <li>點擊主畫面的「＋」浮動按鈕</li>
+                <li>選擇「從相簿選擇」</li>
+                <li>可以一次選取多張圖片</li>
+                <li>確認後進入解析流程</li>
+            </ol>
+
+            <h4>方式三：直接拍照</h4>
+            <ol>
+                <li>點擊主畫面的「＋」浮動按鈕</li>
+                <li>選擇「拍照」</li>
+                <li>拍攝完成後會立即進入解析流程</li>
+            </ol>
+
+            <div class="tip-box">
+                <h4>💡 使用建議</h4>
+                <p>為了獲得最佳的解析效果，請確保收據圖片清晰、完整，避免反光或摺疊遮擋文字。</p>
+            </div>
+
+            <h2 id="settings">4. 環境設定</h2>
+            <p>在開始使用前，建議先設定您的支付方式，這樣 AI 才能準確判斷每筆消費使用的是什么卡片或電子支付。</p>
+
+            <h4>設定路徑</h4>
+            <p><code>設定 → 信用卡維護 / 電子支付維護</code></p>
+
+            <h4>信用卡設定</h4>
+            <ul>
+                <li><strong>卡片名稱</strong>：例如「國泰Cube信用卡」</li>
+                <li><strong>末四碼</strong>：卡的後面4位數字（用於比對）</li>
+            </ul>
+
+            <div class="screenshot">
+                <img src="screenshots/credit_card_setup.png" alt="信用卡維護頁面">
+                <div class="screenshot-caption">圖 2：新增信用卡畫面，輸入卡片名稱和末四碼</div>
+            </div>
+
+            <h4>電子支付設定</h4>
+            <ul>
+                <li><strong>名稱</strong>：例如「全支付」</li>
+                <li><strong>關鍵字</strong>：收據上會出現的文字（逗號分隔），例如「全點,全支付」</li>
+                <li><strong>用途</strong>：幫助 AI 識別使用該電子支付的交易</li>
+            </ul>
+
+            <div class="screenshot">
+                <img src="screenshots/ewallet_setup.png" alt="電子支付維護頁面">
+                <div class="screenshot-caption">圖 3：新增電子支付畫面，輸入名稱和關鍵字</div>
+            </div>
+
+            <h4>為什麼需要設定？</h4>
+            <p>當您上傳收據時，AI 會根據以下規則判斷：</p>
+            <ol>
+                <li>掃描收據上的關鍵字（如「全點」）→ 匹配電子支付</li>
+                <li>若找到匹配的電子支付，支付方式設為該電子支付名稱</li>
+                <li>同時比對信用卡末四碼，找出對應的信用卡</li>
+                <li>若都沒有匹配，預設為「一般刷卡」或「現金」</li>
+            </ol>
+
+            <h2 id="preedit">5. 解析前編輯功能</h2>
+
+            <h4>什麼是「解析前編輯」？</h4>
+            <p>這是一個可選功能，讓您在發送圖片給 AI 之前，可以先查看圖片並補充說明。</p>
+
+            <h4>如何啟用</h4>
+            <p><code>設定 → 啟用解析前編輯 → 開啟開關</code></p>
+
+            <div class="screenshot">
+                <img src="screenshots/settings_page.png" alt="設定頁面">
+                <div class="screenshot-caption">圖 4：設定頁面，可在此開啟「解析前編輯」功能</div>
+            </div>
+
+            <h4>啟用後的流程</h4>
+            <ol>
+                <li>上傳圖片後，會進入編輯畫面</li>
+                <li>可以看到所有圖片的縮圖（清晰可辨識）</li>
+                <li>可以為每張圖片：</li>
+                <ul>
+                    <li><strong>添加說明文字</strong>：如果 AI 辨識錯誤，可以手動修正商家名稱</li>
+                    <li><strong>選擇標籤</strong>：為這張收據標記分類標籤</li>
+                </ul>
+                <li>確認無誤後點擊「開始解析」</li>
+            </ol>
+
+            <h4>未啟用的流程</h4>
+            <p>上傳圖片後會直接進入背景解析，無需額外操作。</p>
+
+            <div class="tip-box">
+                <h4>💡 使用時機</h4>
+                <p>當您發現 AI 經常誤判某些商家的名稱時，可以開啟此功能，在解析前手動輸入正確的商家名稱。</p>
+            </div>
+
+            <h2 id="tags">6. 標籤 (Tag) 功能</h2>
+            <p>標籤是用來分類消費記錄的工具，方便後續查詢和篩選。</p>
+
+            <h4>建立標籤</h4>
+            <p><code>設定 → Tag 管理 → 點擊「+」按鈕</code></p>
+            <ul>
+                <li>輸入標籤名稱（例如：「餐飲」、「交通」、「公司報帳」）</li>
+                <li>選擇標籤顏色（預設為淡黃色）</li>
+            </ul>
+
+            <div class="screenshot">
+                <img src="screenshots/tag_management.png" alt="Tag 管理頁面">
+                <div class="screenshot-caption">圖 6：Tag 管理頁面，可新增和刪除標籤</div>
+            </div>
+
+            <h4>使用標籤</h4>
+            <h5>解析前編輯時：</h5>
+            <p>在編輯畫面中可以為每張圖片選擇多個標籤</p>
+
+            <h5>核准時：</h5>
+            <p>進入詳細資料頁面，點擊右上角「編輯標籤」，勾選或取消勾選標籤</p>
+
+            <h4>標籤的運作方式</h4>
+            <ul>
+                <li>一筆消費可以關聯多個標籤</li>
+                <li>刪除標籤時，所有關聯的消費記錄也會自動移除該標籤</li>
+                <li>導出 CSV 時，多個標籤會用分號（<code>;</code>）隔開</li>
+            </ul>
+
+            <h2 id="approve">7. 核准與管理記錄</h2>
+
+            <h4>解析完成通知</h4>
+            <p>當 AI 解析完成後，系統會：</p>
+            <ul>
+                <li>彈出通知訊息告知您解析結果</li>
+                <li>主頁面的「待核准項目」按鈕會顯示待核准的數量</li>
+            </ul>
+
+            <div class="screenshot">
+                <img src="screenshots/notification.png" alt="解析完成通知">
+                <div class="screenshot-caption">圖 7：解析完成後會收到系統通知，主畫面也會更新待核准數量</div>
+            </div>
+
+            <h4>待核准畫面</h4>
+            <ul>
+                <li>點擊主畫面的「待核准項目」按鈕</li>
+                <li>可以看到所有已解析完成、等待確認的消費記錄</li>
+                <li>每筆記錄顯示：金額、商家、日期、支付方式、標籤</li>
+            </ul>
+
+            <h4>單筆核准</h4>
+            <ol>
+                <li>點擊該筆記錄進入詳細頁面</li>
+                <li>可以修改任何欄位（金額、日期、商家、支付方式等）</li>
+                <li>點擊「核准並送出」</li>
+                <li>核准後資料會保存在手機上</li>
+            </ol>
+
+            <div class="screenshot">
+                <img src="screenshots/approval_detail.png" alt="核准詳細頁面">
+                <div class="screenshot-caption">圖 8：核准詳細頁面，可編輯各項資訊並選擇標籤</div>
+            </div>
+
+            <h4>批次核准</h4>
+            <p>如果您有多筆記錄需要核准，可以：</p>
+            <ol>
+                <li>進入「待核准項目」頁面</li>
+                <li>點擊每筆記錄右上角的勾選框</li>
+                <li>點擊右上方的勾勾圖示, 所有選取的記錄會一次性核准並保存</li>
+            </ol>
+
+            <div class="screenshot">
+                <img src="screenshots/batch_approve.png" alt="批次核准頁面">
+                <div class="screenshot-caption">圖 9：批次核准功能，可一次核准多筆記錄</div>
+            </div>
+
+            <h4>查看全部記錄</h4>
+            <ol>
+                <li>點擊主畫面的「查看全部記錄」按鈕</li>
+                <li>可以看到所有歷史記錄（包含已核准和待處理）</li>
+                <li>每張卡片顯示：</li>
+                <ul>
+                    <li>狀態標籤（等待解析、解析中、解析完成、解析失敗）</li>
+                    <li>解析完成的記錄會顯示金額和商家</li>
+                    <li>解析中的記錄會顯示收據縮圖</li>
+                </ul>
+            </ol>
+
+            <div class="screenshot">
+                <img src="screenshots/history_list.png" alt="全部記錄列表">
+                <div class="screenshot-caption">圖 10：全部記錄頁面，顯示所有歷史記錄</div>
+            </div>
+
+            <h2 id="failed">8. 失敗處理</h2>
+
+            <h4>當 AI 解析失敗時</h4>
+            <ol>
+                <li>主畫面會顯示「解析失敗: X」</li>
+                <li>點擊可進入失敗項目列表</li>
+                <li>選擇失敗的項目，可以看到：</li>
+                <ul>
+                    <li>原始收據圖片</li>
+                    <li>錯誤訊息（例如：「伺服器錯誤」、「圖片檔案不存在」）</li>
+                </ul>
+                <li>可以點擊「再次送出解析」重新嘗試</li>
+                <li>如果確定資料正確，也可以直接點擊「核准並送出」</li>
+            </ol>
+
+            <div class="warning-box">
+                <h4>⚠️ 重要提醒</h4>
+                <p>解析失敗通常是由於網路問題或圖片品質不佳所致。請確認網路連線正常後再嘗試重新解析。</p>
+            </div>
+
+            <h2 id="backup">9. 資料備份與匯出</h2>
+
+            <h4>儲存模式設定</h4>
+            <p><code>設定 → 資料儲存位置 → 本地儲存</code></p>
+            <div class="warning-box">
+                <h4>⚠️ 注意</h4>
+                <p>請選擇「本地儲存」模式，這樣所有資料都會保存在您的手機上。雲端儲存模式是開發者專用，一般使用者不需要使用。</p>
+            </div>
+
+            <h4>匯出備份（信用卡與電子支付）</h4>
+            <ol>
+                <li>點擊「匯出備份」按鈕</li>
+                <li>選擇儲存位置和檔案名稱</li>
+                <li>會產生 JSON 格式的備份檔案</li>
+                <li>包含：信用卡清單、電子支付清單</li>
+            </ol>
+
+            <h4>匯入備份</h4>
+            <ol>
+                <li>點擊「匯入備份」按鈕</li>
+                <li>選擇之前匯出的 JSON 檔案</li>
+                <li>系統會自動合併信用卡和電子支付資料</li>
+            </ol>
+
+            <h4>匯出歷史記錄（CSV）</h4>
+            <ol>
+                <li>在「本地儲存」模式下，點擊「匯出歷史記錄 (CSV)」</li>
+                <li>選擇儲存位置和檔案名稱</li>
+                <li>會產生 CSV 檔案，包含以下欄位：</li>
+                <ul>
+                    <li>日期、金額、幣別、支付方式、帳戶、末四碼</li>
+                    <li>商家名稱、<strong>標籤</strong>、時間戳記</li>
+                </ul>
+                <li>可以用 Excel 或 Google Sheets 開啟進一步分析</li>
+            </ol>
+
+            <div class="screenshot">
+                <img src="screenshots/settings_export.png" alt="設定頁面匯出功能">
+                <div class="screenshot-caption">圖 5：設定頁面底部，可進行匯出備份和匯出 CSV 操作</div>
+            </div>
+
+            <h2 id="tips">10. 使用小技巧</h2>
+
+            <div class="tip-box">
+                <h4>💡 五大使用技巧</h4>
+                <ol>
+                    <li><strong>提前設定支付方式</strong>：在第一次使用前，先設定好您的信用卡和電子支付，讓 AI 能更準確判斷</li>
+                    <li><strong>善用標籤分類</strong>：為消費記錄加上標籤，日後查詢會更方便（例如：「公司報帳」、「個人支出」）</li>
+                    <li><strong>使用解析前編輯</strong>：如果發現 AI 經常誤判某些商家的名稱，可以在解析前手動輸入正確的商家名稱</li>
+                    <li><strong>檢查通知</strong>：解析完成後系統會發送通知，點擊通知可以快速進入核准頁面</li>
+                    <li><strong>定期匯出備份</strong>：建議定期匯出 CSV 備份，避免資料遺失</li>
+                </ol>
+            </div>
+
+            <h2 id="faq">11. 常見問題</h2>
+
+            <h4>Q: AI 解析需要等多久？</h4>
+            <p>A: 通常 10-30 秒即可完成，取決於圖片大小和網路速度。</p>
+
+            <h4>Q: 可以一次傳多少張圖片？</h4>
+            <p>A: 沒有明確限制，但建議一次不要超過 20 張，以免過久等待。</p>
+
+            <h4>Q: 解析失敗怎麼辦？</h4>
+            <p>A: 可以點擊「再次送出解析」重新嘗試，或手動輸入資料後核准。</p>
+
+            <h4>Q: 如何刪除不需要的記錄？</h4>
+            <p>A: 目前支援透過「資料清理」功能批次刪除過期的核准記錄，或在設定中管理。</p>
+
+            <h4>Q: CSV 匯出的標籤欄位是什麼格式？</h4>
+            <p>A: 同一筆消費若有多個標籤，會用分號（<code>;</code>）隔開，例如：「餐飲;午餐;公司報帳」</p>
+
+            <hr style="margin: 40px 0; border: none; border-top: 2px solid #e0e0e0;">
+
+            <div style="text-align: center; padding: 30px; background: #f5f5f5; border-radius: 10px;">
+                <h3>📞 需要協助？</h3>
+                <p>如有任何問題或建議，請隨時與開發者聯繫。</p>
+                <p style="margin-top: 15px; color: #666;">記帳助手 v1.0 | 最後更新：2026年8月</p>
+            </div>
+        </div>
+
+        <footer>
+            <p>© 2026 記帳助手 | AI 智慧消費記錄應用程式</p>
+        </footer>
+    </div>
+</body>
+</html>
