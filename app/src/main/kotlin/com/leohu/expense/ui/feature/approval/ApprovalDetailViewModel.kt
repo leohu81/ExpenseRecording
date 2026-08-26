@@ -3,13 +3,10 @@ package com.leohu.expense.ui.feature.approval
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.leohu.expense.domain.model.CreditCard
-import com.leohu.expense.domain.model.EWalletAccount
-import com.leohu.expense.domain.model.PaymentRecord
-import com.leohu.expense.domain.model.SourceImage
-import com.leohu.expense.domain.model.Tag
+import com.leohu.expense.domain.model.*
 import com.leohu.expense.domain.repository.ExpenseRepository
 import com.leohu.expense.domain.usecase.ApprovePaymentRecordUseCase
+import com.leohu.expense.util.PreferenceHelper
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -28,13 +25,13 @@ data class ApprovalDetailUiState(
 class ApprovalDetailViewModel(
     private val repository: ExpenseRepository,
     private val approveUseCase: ApprovePaymentRecordUseCase,
+    private val preferenceHelper: PreferenceHelper,
     private val recordId: String
 ) : ViewModel() {
 
     private val _isApproved = MutableStateFlow(false)
     private val _errorMessage = MutableStateFlow<String?>(null)
 
-    // 優化後的資料組合邏輯，確保所有資料流都有初始值
     val uiState: StateFlow<ApprovalDetailUiState> = combine(
         repository.getPaymentRecordByIdFlow(recordId).onStart { emit(null) },
         repository.getCreditCards().onStart { emit(emptyList()) },
@@ -50,8 +47,7 @@ class ApprovalDetailViewModel(
         val isApproved = flows[4] as? Boolean ?: false
         val error = flows[5] as? String
         
-        // 注意：這裡如果 record 為 null，會導致 image 也為 null
-        val image = record?.sourceImageId?.let { repository.getSourceImageById(it) }
+        val image = record?.sourceImageId?.let { if (it.isEmpty()) null else repository.getSourceImageById(it) }
         val tagMap = tags.associateBy { it.id }
         
         ApprovalDetailUiState(
@@ -61,7 +57,6 @@ class ApprovalDetailViewModel(
             ewallets = ewallets,
             tags = tags,
             tagMap = tagMap,
-            // 只有當我們確定是在等待 record 載入時才顯示 Loading
             isLoading = record == null,
             isApproved = isApproved,
             errorMessage = error
@@ -74,7 +69,13 @@ class ApprovalDetailViewModel(
 
     fun updateRecord(updatedRecord: PaymentRecord) {
         viewModelScope.launch {
-            repository.updatePaymentRecord(updatedRecord)
+            // 自動計算約當台幣同步邏輯
+            val finalRecord = if (updatedRecord.currency?.uppercase() == "TWD") {
+                updatedRecord.copy(amountTwd = updatedRecord.amount)
+            } else {
+                updatedRecord
+            }
+            repository.updatePaymentRecord(finalRecord)
         }
     }
 
@@ -98,15 +99,35 @@ class ApprovalDetailViewModel(
         }
     }
 
+    fun deleteRecord() {
+        viewModelScope.launch {
+            try {
+                val record = uiState.value.record ?: return@launch
+                repository.deletePaymentRecord(record)
+                _isApproved.value = true // 觸發返回
+            } catch (e: Exception) {
+                _errorMessage.value = "刪除失敗: ${e.message}"
+            }
+        }
+    }
+
     fun approve() {
         viewModelScope.launch {
             try {
                 _errorMessage.value = null
-                approveUseCase(recordId)
+                val record = uiState.value.record ?: return@launch
+                
+                // 如果原本不是已核准狀態，才需要執行 approveUseCase (處理狀態與 Webhook)
+                if (record.status != PaymentStatus.APPROVED) {
+                    approveUseCase(recordId)
+                } else {
+                    // 只是修改已核准的內容，直接儲存即可 (updateRecord 已處理)
+                }
+                
                 _isApproved.value = true
             } catch (e: Exception) {
                 e.printStackTrace()
-                _errorMessage.value = "核准失敗: ${e.message}"
+                _errorMessage.value = "儲存失敗: ${e.message}"
             }
         }
     }
@@ -118,10 +139,11 @@ class ApprovalDetailViewModel(
     class Factory(
         private val repository: ExpenseRepository,
         private val approveUseCase: ApprovePaymentRecordUseCase,
+        private val preferenceHelper: PreferenceHelper,
         private val recordId: String
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return ApprovalDetailViewModel(repository, approveUseCase, recordId) as T
+            return ApprovalDetailViewModel(repository, approveUseCase, preferenceHelper, recordId) as T
         }
     }
 }

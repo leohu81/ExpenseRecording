@@ -27,49 +27,30 @@ class ExpenseApplication : Application() {
     lateinit var preferenceHelper: PreferenceHelper
         private set
 
-    // 定義 migration 從版本 1 到版本 2，並進一步到版本 3
+    // v3 -> v4: 新增 amountTwd 欄位
+    private val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            try {
+                database.execSQL("ALTER TABLE payment_records ADD COLUMN amountTwd REAL")
+            } catch (e: Exception) {}
+        }
+    }
+
     private val MIGRATION_2_3 = object : Migration(2, 3) {
         override fun migrate(database: SupportSQLiteDatabase) {
-            // 為 source_images 添加 tags 欄位
             try {
-                val cursor = database.query("PRAGMA table_info(source_images)")
-                var hasTagsColumn = false
-                while (cursor.moveToNext()) {
-                    val name = cursor.getString(cursor.getColumnIndexOrThrow("name"))
-                    if (name == "tags") {
-                        hasTagsColumn = true
-                        break
-                    }
-                }
-                cursor.close()
-                
-                if (!hasTagsColumn) {
-                    database.execSQL("ALTER TABLE source_images ADD COLUMN tags TEXT")
-                }
+                database.execSQL("ALTER TABLE source_images ADD COLUMN tags TEXT")
             } catch (e: Exception) {}
         }
     }
 
     private val MIGRATION_1_2 = object : Migration(1, 2) {
         override fun migrate(database: SupportSQLiteDatabase) {
-            // ... 前面的 migration 內容 ...
             try {
                 database.execSQL("CREATE TABLE IF NOT EXISTS tags (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL, createdAt INTEGER NOT NULL)")
                 database.execSQL("CREATE TABLE IF NOT EXISTS payment_record_tags (paymentRecordId TEXT NOT NULL, tagId TEXT NOT NULL, PRIMARY KEY(paymentRecordId, tagId), FOREIGN KEY(paymentRecordId) REFERENCES payment_records(id) ON DELETE CASCADE, FOREIGN KEY(tagId) REFERENCES tags(id) ON DELETE CASCADE)")
-                
-                // 檢查 payment_records.tags
-                val c1 = database.query("PRAGMA table_info(payment_records)")
-                var h1 = false
-                while (c1.moveToNext()) { if (c1.getString(c1.getColumnIndexOrThrow("name")) == "tags") { h1 = true; break } }
-                c1.close()
-                if (!h1) database.execSQL("ALTER TABLE payment_records ADD COLUMN tags TEXT")
-
-                // 檢查 source_images.preDescription
-                val c2 = database.query("PRAGMA table_info(source_images)")
-                var h2 = false
-                while (c2.moveToNext()) { if (c2.getString(c2.getColumnIndexOrThrow("name")) == "preDescription") { h2 = true; break } }
-                c2.close()
-                if (!h2) database.execSQL("ALTER TABLE source_images ADD COLUMN preDescription TEXT")
+                database.execSQL("ALTER TABLE payment_records ADD COLUMN tags TEXT")
+                database.execSQL("ALTER TABLE source_images ADD COLUMN preDescription TEXT")
             } catch (e: Exception) {}
         }
     }
@@ -85,7 +66,7 @@ class ExpenseApplication : Application() {
                 AppDatabase::class.java,
                 "expense-db"
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .fallbackToDestructiveMigration()
                 .build()
 
@@ -128,6 +109,7 @@ class ExpenseApplication : Application() {
             override suspend fun getSourceImageById(id: String): SourceImage? = null
             override fun getAllSourceImages() = flow { emit(emptyList<SourceImage>()) }
             override suspend fun updateSourceImage(image: SourceImage) {}
+            override suspend fun deleteSourceImage(id: String) {}
             override fun getPaymentRecordsByStatus(status: PaymentStatus) = flow { emit(emptyList<PaymentRecord>()) }
             override suspend fun getPaymentRecordById(id: String): PaymentRecord? = null
             override fun getPaymentRecordByIdFlow(id: String) = flow { emit(null as PaymentRecord?) }

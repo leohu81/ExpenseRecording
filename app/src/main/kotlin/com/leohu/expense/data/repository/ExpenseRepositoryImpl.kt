@@ -85,6 +85,20 @@ class ExpenseRepositoryImpl(
         sourceImageDao.update(image.toEntity())
     }
 
+    override suspend fun deleteSourceImage(id: String) {
+        val entity = sourceImageDao.getById(id) ?: return
+        // 刪除本地檔案
+        val file = File(entity.localPath)
+        if (file.exists()) {
+            file.delete()
+        }
+        // 刪除資料庫記錄
+        sourceImageDao.delete(entity)
+        // 刪除關聯的 PaymentRecord
+        val records = paymentRecordDao.getBySourceImageId(id)
+        records.forEach { paymentRecordDao.delete(it) }
+    }
+
     override fun getPaymentRecordsByStatus(status: PaymentStatus): Flow<List<PaymentRecord>> {
         return paymentRecordDao.getByStatus(status).map { list -> list.map { it.toDomain() } }
     }
@@ -106,7 +120,7 @@ class ExpenseRepositoryImpl(
     }
 
     override suspend fun updatePaymentRecord(record: PaymentRecord) {
-        paymentRecordDao.update(record.toEntity())
+        paymentRecordDao.insert(record.toEntity())
     }
 
     override suspend fun deletePaymentRecord(record: PaymentRecord) {
@@ -122,6 +136,7 @@ class ExpenseRepositoryImpl(
         val params = mutableMapOf(
             "method" to record.method,
             "amount" to record.amount.toString(),
+            "amount_twd" to (record.amountTwd ?: record.amount).toString(),
             "description" to (record.description ?: ""),
             "date" to (record.consumeDate ?: ""),
             "currency" to (record.currency ?: "TWD")
@@ -208,7 +223,6 @@ class ExpenseRepositoryImpl(
         val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
         val dataUri = "data:image/jpeg;base64,$base64Image"
         
-        // 確保優先使用傳入的列表，若無則從 DAO 讀取
         val cards = if (creditCards.isNotEmpty()) creditCards else creditCardDao.getAll().map { it.toDomain() }.filter { it.isActive }
         val activeEWallets = if (ewalletAccounts.isNotEmpty()) ewalletAccounts else eWalletAccountDao.getAll().map { it.toDomain() }.filter { it.isActive }
 
@@ -246,7 +260,10 @@ class ExpenseRepositoryImpl(
             appendLine("   - If a credit card was used (either directly or via an E-Wallet), match it against the \"Known Credit Cards\" list.")
             appendLine("   - Use the EXACT card name from the list for 'account'.")
             appendLine("   - Extract the last 4 digits for 'card_last4'.")
-            appendLine("3. **Data Extraction**: Extract 'amount', 'currency' (default TWD), 'date' (YYYY/MM/DD), and 'description' (merchant name).")
+            appendLine("3. **Data Extraction & Translation**: ")
+            appendLine("   - Extract 'amount', 'currency' (default TWD), 'date' (YYYY/MM/DD).")
+            appendLine("   - Extract 'description' (merchant name). IF the merchant name or description is NOT in Traditional Chinese, TRANSLATE it to Traditional Chinese and append the original name in brackets. Example: '新宿百貨 (Shinjuku Department Store)'.")
+            appendLine("   - IF 'currency' is NOT 'TWD', provide the approximate amount in TWD based on the transaction date in 'amount_twd'. IF 'currency' IS 'TWD', 'amount_twd' should be equal to 'amount'.")
             appendLine()
             appendLine("Output strictly in JSON format following this schema:")
             appendLine("{")
@@ -257,6 +274,7 @@ class ExpenseRepositoryImpl(
             appendLine("      \"account\": \"string or null\",")
             appendLine("      \"card_last4\": \"string or null\",")
             appendLine("      \"amount\": number,")
+            appendLine("      \"amount_twd\": number,")
             appendLine("      \"currency\": \"string\",")
             appendLine("      \"date\": \"string\",")
             appendLine("      \"description\": \"string\"")
@@ -284,13 +302,11 @@ class ExpenseRepositoryImpl(
         val response = api.chat("Bearer $apiKey", request)
         val content = response.choices.firstOrNull()?.message?.content ?: throw Exception("Agnes 回傳空內容")
         
-        // 更魯棒的 JSON 提取邏輯：使用正則表達式尋找 JSON 區塊
         val jsonRegex = "```json\\n?(.*?)```".toRegex(RegexOption.DOT_MATCHES_ALL)
         val match = jsonRegex.find(content)
         val jsonContent = if (match != null) {
             match.groupValues[1].trim()
         } else {
-            // 如果沒找到 markdown 標籤，嘗試尋找第一個 { 和最後一個 }
             val start = content.indexOf('{')
             val end = content.lastIndexOf('}')
             if (start != -1 && end != -1 && end > start) {

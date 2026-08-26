@@ -12,11 +12,12 @@ data class PaymentRecordEntity(
     val account: String?,
     val cardLast4: String?,
     val amount: Double,
+    val amountTwd: Double?, // 新增：約當台幣
     val currency: String?,
     val consumeDate: String?,
     val description: String?,
     val status: PaymentStatus,
-    val tags: String?,  // 改為可 null
+    val tags: String?,
     val createdAt: Long,
     val approvedAt: Long?
 )

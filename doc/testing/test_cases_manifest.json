@@ -1,0 +1,39 @@
+{
+  "project": "ExpenseApp",
+  "version": "1.4.0 (v4)",
+  "test_suites": [
+    {
+      "name": "L0_Smoke_Tests",
+      "cases": [
+        {"id": "SMK-01", "description": "啟動 App 並確認主畫面計數器顯示"},
+        {"id": "SMK-02", "description": "進入手動輸入頁面並成功儲存一筆 TWD 消費"}
+      ]
+    },
+    {
+      "name": "L1_AI_Parsing_Logic",
+      "cases": [
+        {"id": "AI-01", "description": "解析 receipt_twd.jpg，驗證 amountTwd 等於 amount", "data": "receipt_twd.jpg"},
+        {"id": "AI-02", "description": "解析 receipt_jpy.jpg，驗證商家名稱翻譯與括號原文", "data": "receipt_jpy.jpg"},
+        {"id": "AI-03", "description": "解析 receipt_jpy.jpg，驗證 amountTwd 欄位大於 0", "data": "receipt_jpy.jpg"},
+        {"id": "AI-04", "description": "解析 receipt_multi.jpg，驗證歷史記錄拆分為兩筆 Record", "data": "receipt_multi.jpg"}
+      ]
+    },
+    {
+      "name": "L2_UI_Interaction",
+      "cases": [
+        {"id": "UI-01", "description": "驗證點擊日期欄位彈出 DatePicker 並正確選值"},
+        {"id": "UI-02", "description": "驗證設定頁面 Switch 開關即時狀態變更"},
+        {"id": "UI-03", "description": "驗證已核准項目進入編輯後，右上角顯示垃圾桶並能刪除"},
+        {"id": "UI-04", "description": "驗證設定頁面 Tag 列表內容過多時可正常捲動"}
+      ]
+    },
+    {
+      "name": "L3_System_Integration",
+      "cases": [
+        {"id": "SYS-01", "description": "執行 CSV 匯出，驗證包含 '約當台幣' 與 '標籤' 欄位"},
+        {"id": "SYS-02", "description": "切換至雲端模式，驗證核准後 Webhook 收到正確 JSON (含 amount_twd)"},
+        {"id": "SYS-03", "description": "資料庫遷移測試：從 v3 覆蓋升級至 v4，確認舊記錄仍在"}
+      ]
+    }
+  ]
+}

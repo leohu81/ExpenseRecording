@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,7 +35,8 @@ fun HomeScreen(
     onNavigateToHistory: () -> Unit,
     onNavigateToFailedList: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onNavigateToPreParseEdit: (List<String>) -> Unit
+    onNavigateToPreParseEdit: (List<String>) -> Unit,
+    onNavigateToManualEntry: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -130,6 +132,15 @@ fun HomeScreen(
         floatingActionButton = {
             Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
                 if (showAddOptions) {
+                    SmallFloatingActionButton(
+                        onClick = {
+                            onNavigateToManualEntry()
+                            showAddOptions = false
+                        },
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = "手動輸入")
+                    }
                     SmallFloatingActionButton(
                         onClick = {
                             galleryLauncher.launch("image/*")

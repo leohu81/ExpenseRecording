@@ -12,10 +12,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.leohu.expense.domain.model.PaymentRecord
 import com.leohu.expense.domain.model.SourceImageStatus
 import java.io.File
 
@@ -57,14 +57,24 @@ fun HistoryScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(historyItems, key = { it.sourceImage.id }) { item ->
-                    HistoryItemCard(
-                        item = item,
-                        onClick = { 
-                            val recordId = item.paymentRecords.firstOrNull()?.id
-                            onNavigateToDetail(item.sourceImage.id, recordId)
+                items(historyItems, key = { it.id }) { item ->
+                    when (item) {
+                        is HistoryUiItem.Record -> {
+                            RecordItemCard(
+                                record = item.record,
+                                imagePath = item.sourceImage?.localPath,
+                                onClick = { onNavigateToDetail(item.record.sourceImageId, item.record.id) }
+                            )
                         }
-                    )
+                        is HistoryUiItem.ImageOnly -> {
+                            ImageOnlyItemCard(
+                                status = item.sourceImage.status,
+                                lastError = item.sourceImage.lastError,
+                                imagePath = item.sourceImage.localPath,
+                                onClick = { onNavigateToDetail(item.sourceImage.id, null) }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -72,23 +82,75 @@ fun HistoryScreen(
 }
 
 @Composable
-private fun HistoryItemCard(
-    item: ImageHistoryItem,
+private fun RecordItemCard(
+    record: PaymentRecord,
+    imagePath: String?,
     onClick: () -> Unit
 ) {
-    val status = item.sourceImage.status
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "解析完成",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "${formatAmount(record.amount, record.currency, record.amountTwd)} - ${record.description ?: "無說明"}",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Row(modifier = Modifier.padding(top = 4.dp)) {
+                    SuggestionChip(onClick = {}, label = { Text(record.method) })
+                    if (!record.account.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        SuggestionChip(onClick = {}, label = { Text(record.account!!) })
+                    }
+                }
+            }
+
+            if (!imagePath.isNullOrBlank()) {
+                AsyncImage(
+                    model = File(imagePath),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImageOnlyItemCard(
+    status: SourceImageStatus,
+    lastError: String?,
+    imagePath: String,
+    onClick: () -> Unit
+) {
     val cardColor = when (status) {
         SourceImageStatus.PENDING_OCR -> MaterialTheme.colorScheme.primaryContainer
         SourceImageStatus.PROCESSING -> MaterialTheme.colorScheme.tertiaryContainer
-        SourceImageStatus.READY -> MaterialTheme.colorScheme.secondaryContainer
         SourceImageStatus.FAILED -> MaterialTheme.colorScheme.errorContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
     }
     
     val statusText = when (status) {
         SourceImageStatus.PENDING_OCR -> "等待解析"
         SourceImageStatus.PROCESSING -> "解析中..."
-        SourceImageStatus.READY -> "解析完成"
         SourceImageStatus.FAILED -> "解析失敗"
+        else -> "處理中"
     }
 
     Card(
@@ -109,66 +171,39 @@ private fun HistoryItemCard(
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                
-                Spacer(modifier = Modifier.height(4.dp))
-                
                 if (status == SourceImageStatus.FAILED) {
                     Text(
-                        text = "錯誤: ${item.sourceImage.lastError ?: "未知原因"}",
+                        text = "錯誤: ${lastError ?: "未知原因"}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
-                } else if (item.paymentRecords.isNotEmpty()) {
-                    item.paymentRecords.forEach { record ->
-                        Text(
-                            text = "${formatAmountWithCurrency(record.amount, record.currency)} - ${record.description ?: "無說明"}",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Row(modifier = Modifier.padding(top = 4.dp)) {
-                            if (record.method.isNotEmpty()) {
-                                SuggestionChip(
-                                    onClick = { },
-                                    label = { Text(record.method) },
-                                    modifier = Modifier.padding(end = 4.dp)
-                                )
-                            }
-                            if (!record.account.isNullOrBlank()) {
-                                SuggestionChip(
-                                    onClick = { },
-                                    label = { Text(record.account + (record.cardLast4?.let { " ($it)" } ?: "")) }
-                                )
-                            }
-                        }
-                    }
                 } else {
                     Text(
-                        text = "準備處理...",
+                        text = "點擊以管理或重試",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            // 若尚未完成解析或解析失敗，顯示圖片縮圖
-            if (status != SourceImageStatus.READY || item.paymentRecords.isEmpty()) {
-                AsyncImage(
-                    model = File(item.sourceImage.localPath),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop
-                )
-            }
+            AsyncImage(
+                model = File(imagePath),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(8.dp)),
+                contentScale = ContentScale.Crop
+            )
         }
     }
 }
 
-private fun formatAmountWithCurrency(amount: Double, currency: String?): String {
+private fun formatAmount(amount: Double, currency: String?, amountTwd: Double?): String {
     val cur = currency ?: "TWD"
     return if (cur.uppercase() == "TWD") {
         "$amount"
     } else {
-        "$amount $cur"
+        val twdPart = if (amountTwd != null) " (≈ $amountTwd TWD)" else ""
+        "$amount $cur$twdPart"
     }
 }

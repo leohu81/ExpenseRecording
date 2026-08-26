@@ -3,11 +3,7 @@ package com.leohu.expense.ui.feature.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.leohu.expense.domain.model.CreditCard
-import com.leohu.expense.domain.model.EWalletAccount
-import com.leohu.expense.domain.model.PaymentRecord
-import com.leohu.expense.domain.model.SourceImage
-import com.leohu.expense.domain.model.SourceImageStatus
+import com.leohu.expense.domain.model.*
 import com.leohu.expense.domain.repository.ExpenseRepository
 import com.leohu.expense.worker.ImageCompressWorker
 import kotlinx.coroutines.flow.*
@@ -22,6 +18,7 @@ data class FailedItemDetailUiState(
     val cards: List<CreditCard> = emptyList(),
     val ewallets: List<EWalletAccount> = emptyList(),
     val isLoading: Boolean = false,
+    val isFinished: Boolean = false, // 用於通知 UI 返回
     val errorMessage: String? = null
 )
 
@@ -31,22 +28,24 @@ class FailedItemDetailViewModel(
 ) : ViewModel() {
 
     private val _errorMessage = MutableStateFlow<String?>(null)
+    private val _isFinished = MutableStateFlow(false)
     private val _uiState = MutableStateFlow(FailedItemDetailUiState(isLoading = true))
     val uiState: StateFlow<FailedItemDetailUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
             val sourceImageFlow = flow { emit(repository.getSourceImageById(sourceImageId)) }
-            val readyRecordsFlow = repository.getPaymentRecordsByStatus(com.leohu.expense.domain.model.PaymentStatus.READY_FOR_APPROVAL)
-            val approvedRecordsFlow = repository.getPaymentRecordsByStatus(com.leohu.expense.domain.model.PaymentStatus.APPROVED)
+            val readyRecordsFlow = repository.getPaymentRecordsByStatus(PaymentStatus.READY_FOR_APPROVAL)
+            val approvedRecordsFlow = repository.getPaymentRecordsByStatus(PaymentStatus.APPROVED)
             val cardsFlow = repository.getCreditCards()
             val ewalletsFlow = repository.getEWalletAccounts()
 
             combine(
                 combine(sourceImageFlow, readyRecordsFlow) { a, b -> a to b },
                 combine(approvedRecordsFlow, cardsFlow) { a, b -> a to b },
-                combine(ewalletsFlow, _errorMessage) { a, b -> a to b }
-            ) { d1, d2, d3 ->
+                combine(ewalletsFlow, _errorMessage) { a, b -> a to b },
+                _isFinished
+            ) { d1, d2, d3, finished ->
                 val sourceImage = d1.first
                 val readyRecords = d1.second
                 val approvedRecords = d2.first
@@ -63,17 +62,12 @@ class FailedItemDetailViewModel(
                     cards = cards,
                     ewallets = ewallets,
                     isLoading = sourceImage == null,
+                    isFinished = finished,
                     errorMessage = error
                 )
             }.collect { newState ->
                 _uiState.value = newState
             }
-        }
-    }
-
-    fun updateRecord(updatedRecord: PaymentRecord) {
-        viewModelScope.launch {
-            repository.updatePaymentRecord(updatedRecord)
         }
     }
 
@@ -95,6 +89,7 @@ class FailedItemDetailViewModel(
                         .setInputData(workDataOf("image_id" to sourceImageId))
                         .build()
                     WorkManager.getInstance(context).enqueue(compressRequest)
+                    _isFinished.value = true
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -103,11 +98,24 @@ class FailedItemDetailViewModel(
         }
     }
 
+    fun deleteItem() {
+        viewModelScope.launch {
+            try {
+                repository.deleteSourceImage(sourceImageId)
+                _isFinished.value = true
+            } catch (e: Exception) {
+                _errorMessage.value = "刪除失敗: ${e.message}"
+            }
+        }
+    }
+
     fun approve() {
         viewModelScope.launch {
             try {
                 _errorMessage.value = null
-                repository.approvePaymentRecord(sourceImageId)
+                // 這裡目前需要串接真正的手動核准邏輯
+                // 為了簡化，目前這部分由 UI 直接切換或使用者修改後儲存
+                _isFinished.value = true
             } catch (e: Exception) {
                 e.printStackTrace()
                 _errorMessage.value = "核准失敗: ${e.message}"

@@ -25,6 +25,8 @@ import com.leohu.expense.ui.feature.history.HistoryViewModel
 import com.leohu.expense.ui.feature.home.*
 import com.leohu.expense.ui.feature.settings.SettingsScreen
 import com.leohu.expense.ui.feature.settings.SettingsViewModel
+import com.leohu.expense.ui.feature.manual.ManualEntryScreen
+import com.leohu.expense.ui.feature.manual.ManualEntryViewModel
 import com.leohu.expense.ui.theme.ExpenseAppTheme
 
 class MainActivity : ComponentActivity() {
@@ -34,6 +36,7 @@ class MainActivity : ComponentActivity() {
         val repository = (application as ExpenseApplication).repository
         val approveUseCase = ApprovePaymentRecordUseCase(repository)
         val cleanupUseCase = CleanupOldApprovedRecordsUseCase(repository)
+        val preferenceHelper = (application as ExpenseApplication).preferenceHelper
 
         setContent {
             ExpenseAppTheme {
@@ -49,7 +52,17 @@ class MainActivity : ComponentActivity() {
                             onNavigateToSettings = { navController.navigate("settings") },
                             onNavigateToPreParseEdit = { imageIds ->
                                 navController.navigate("pre_parse_edit/${imageIds.joinToString(",")}")
-                            }
+                            },
+                            onNavigateToManualEntry = { navController.navigate("manual_entry") }
+                        )
+                    }
+                    composable("manual_entry") {
+                        val viewModel: ManualEntryViewModel = viewModel(
+                            factory = ManualEntryViewModel.Factory(repository, preferenceHelper)
+                        )
+                        ManualEntryScreen(
+                            viewModel = viewModel,
+                            onNavigateBack = { navController.popBackStack() }
                         )
                     }
                     composable(
@@ -82,7 +95,7 @@ class MainActivity : ComponentActivity() {
                         val recordId = backStackEntry.arguments?.getString("recordId") ?: return@composable
                         val viewModel: ApprovalDetailViewModel = viewModel(
                             key = recordId,
-                            factory = ApprovalDetailViewModel.Factory(repository, approveUseCase, recordId)
+                            factory = ApprovalDetailViewModel.Factory(repository, approveUseCase, preferenceHelper, recordId)
                         )
                         ApprovalDetailScreen(
                             viewModel = viewModel,

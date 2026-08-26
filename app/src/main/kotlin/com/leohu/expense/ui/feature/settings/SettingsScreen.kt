@@ -35,7 +35,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
-    // 監聽開關狀態變化 (從 ViewModel 同步到本地 State)
+    // 監聽開關狀態變化
     val enablePreParseEdit by viewModel.enablePreParseEdit.collectAsState()
 
     // Export Backup Launcher (JSON)
@@ -80,8 +80,8 @@ fun SettingsScreen(
     if (showTagDialog) {
         AddTagDialog(
             onDismiss = { showTagDialog = false },
-            onAdd = { name, color ->
-                viewModel.addTag(name, color)
+            onAdd = { name ->
+                viewModel.addTag(name, "#FFF9C4")
                 showTagDialog = false
             }
         )
@@ -276,7 +276,7 @@ fun SettingsScreen(
                 Text("匯入備份")
             }
 
-            // CSV Export (only available in local mode)
+            // CSV Export
             if (storageMode == "local") {
                 OutlinedButton(
                     onClick = { csvLauncher.launch("expense_records_${System.currentTimeMillis()}.csv") },
@@ -291,9 +291,38 @@ fun SettingsScreen(
                 )
             }
 
-            // Simulate Failure Button - Only in Debug mode and moved to the end
-            // Note: In Compose with R8/Minification, BuildConfig.DEBUG might not be enough
-            // Using a system property check or similar for a more robust "Debug Only" UI
+            HorizontalDivider()
+
+            // Version Info
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("關於", style = MaterialTheme.typography.titleSmall)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    val versionName = context.packageManager
+                        .getPackageInfo(context.packageName, 0)
+                        .versionName
+                    val versionCode = context.packageManager
+                        .getPackageInfo(context.packageName, 0)
+                        .versionCode.toString()
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("版本")
+                        Text("$versionName ($versionCode)")
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Expense Recording App",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Simulate Failure Button - Only in Debug mode
             if (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
                 HorizontalDivider()
                 Text("開發者調試", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
@@ -323,10 +352,9 @@ fun SettingsScreen(
 @Composable
 private fun AddTagDialog(
     onDismiss: () -> Unit,
-    onAdd: (String, String) -> Unit
+    onAdd: (String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
-    var color by remember { mutableStateOf("#FFF9C4") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -339,23 +367,13 @@ private fun AddTagDialog(
                     label = { Text("Tag 名稱") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("顏色:")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(androidx.compose.foundation.shape.CircleShape)
-                            .background(Color(android.graphics.Color.parseColor(color)))
-                    )
-                }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
                     if (name.isNotBlank()) {
-                        onAdd(name, color)
+                        onAdd(name)
                     }
                 }
             ) {

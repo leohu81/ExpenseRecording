@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,6 +23,8 @@ import coil.compose.AsyncImage
 import com.leohu.expense.domain.model.PaymentStatus
 import com.leohu.expense.domain.model.Tag
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +36,11 @@ fun ApprovalDetailScreen(
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showTagDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    
+    // 日期選擇器狀態
+    var showDatePicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState()
 
     LaunchedEffect(uiState.isApproved) {
         if (uiState.isApproved) {
@@ -57,13 +65,54 @@ fun ApprovalDetailScreen(
         )
     }
 
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("刪除記錄") },
+            text = { Text("確定要刪除這筆消費記錄嗎？此動作無法復原。") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.deleteRecord() }) {
+                    Text("刪除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("取消") }
+            }
+        )
+    }
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val date = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(Date(millis))
+                        uiState.record?.let { viewModel.updateRecord(it.copy(consumeDate = date)) }
+                    }
+                    showDatePicker = false
+                }) { Text("確定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (uiState.record?.status == PaymentStatus.APPROVED) "查看消費記錄" else "核准消費記錄") },
+                title = { Text(if (uiState.record?.status == PaymentStatus.APPROVED) "編輯消費記錄" else "核准消費記錄") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showDeleteDialog = true }) {
+                        Icon(Icons.Default.Delete, contentDescription = "刪除記錄", tint = MaterialTheme.colorScheme.error)
                     }
                 }
             )
@@ -76,8 +125,6 @@ fun ApprovalDetailScreen(
                 CircularProgressIndicator()
             }
         } else {
-            val isReadOnly = record.status == PaymentStatus.APPROVED
-
             Column(
                 modifier = Modifier
                     .padding(padding)
@@ -97,7 +144,7 @@ fun ApprovalDetailScreen(
                     )
                 }
 
-                // Tag 區域 - 移到上方更顯眼
+                // Tag 區域
                 Column {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -105,19 +152,16 @@ fun ApprovalDetailScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("消費標籤", style = MaterialTheme.typography.titleSmall)
-                        if (!isReadOnly) {
-                            TextButton(onClick = { showTagDialog = true }) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("編輯標籤")
-                            }
+                        TextButton(onClick = { showTagDialog = true }) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("編輯標籤")
                         }
                     }
                     
                     if (record.tags.isEmpty()) {
                         Text("尚無標籤", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
-                        // 使用簡單的 Row 包裝，支援捲動
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -126,11 +170,16 @@ fun ApprovalDetailScreen(
                         ) {
                             record.tags.forEach { tagId ->
                                 uiState.tagMap[tagId]?.let { tag ->
+                                    val tagColor = try {
+                                        Color(android.graphics.Color.parseColor(tag.color))
+                                    } catch (e: Exception) {
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    }
                                     SuggestionChip(
-                                        onClick = { if (!isReadOnly) showTagDialog = true },
+                                        onClick = { showTagDialog = true },
                                         label = { Text(tag.name) },
                                         colors = SuggestionChipDefaults.suggestionChipColors(
-                                            containerColor = Color(android.graphics.Color.parseColor(tag.color)).copy(alpha = 0.3f)
+                                            containerColor = tagColor.copy(alpha = 0.3f)
                                         )
                                     )
                                 }
@@ -143,9 +192,8 @@ fun ApprovalDetailScreen(
 
                 TextField(
                     value = record.description ?: "",
-                    onValueChange = { if (!isReadOnly) viewModel.updateRecord(record.copy(description = it)) },
+                    onValueChange = { viewModel.updateRecord(record.copy(description = it)) },
                     label = { Text("說明/商家") },
-                    readOnly = isReadOnly,
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -153,30 +201,44 @@ fun ApprovalDetailScreen(
                     TextField(
                         value = record.amount.toString(),
                         onValueChange = { 
-                            if (!isReadOnly) {
-                                val newVal = it.toDoubleOrNull() ?: 0.0
-                                viewModel.updateRecord(record.copy(amount = newVal)) 
-                            }
+                            val newVal = it.toDoubleOrNull() ?: 0.0
+                            viewModel.updateRecord(record.copy(amount = newVal)) 
                         },
                         label = { Text("金額") },
-                        readOnly = isReadOnly,
                         modifier = Modifier.weight(1f)
                     )
                     TextField(
                         value = record.currency ?: "TWD",
-                        onValueChange = { if (!isReadOnly) viewModel.updateRecord(record.copy(currency = it)) },
+                        onValueChange = { viewModel.updateRecord(record.copy(currency = it)) },
                         label = { Text("幣別") },
-                        readOnly = isReadOnly,
                         modifier = Modifier.weight(0.5f)
                     )
                 }
 
+                if (record.currency?.uppercase() != "TWD") {
+                    TextField(
+                        value = record.amountTwd?.toString() ?: "",
+                        onValueChange = { 
+                            val newVal = it.toDoubleOrNull()
+                            viewModel.updateRecord(record.copy(amountTwd = newVal))
+                        },
+                        label = { Text("約當台幣") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                // 日期選擇欄位
                 TextField(
                     value = record.consumeDate ?: "",
-                    onValueChange = { if (!isReadOnly) viewModel.updateRecord(record.copy(consumeDate = it)) },
-                    label = { Text("日期 (YYYY/MM/DD)") },
-                    readOnly = isReadOnly,
-                    modifier = Modifier.fillMaxWidth()
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("日期") },
+                    trailingIcon = {
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(Icons.Default.CalendarToday, contentDescription = "選擇日期")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true }
                 )
 
                 // 支付方式
@@ -185,8 +247,8 @@ fun ApprovalDetailScreen(
                 }
                 var methodExpanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(
-                    expanded = if (isReadOnly) false else methodExpanded,
-                    onExpandedChange = { if (!isReadOnly) methodExpanded = !methodExpanded },
+                    expanded = methodExpanded,
+                    onExpandedChange = { methodExpanded = !methodExpanded },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     TextField(
@@ -194,23 +256,21 @@ fun ApprovalDetailScreen(
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("支付方式") },
-                        trailingIcon = { if (!isReadOnly) ExposedDropdownMenuDefaults.TrailingIcon(expanded = methodExpanded) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = methodExpanded) },
                         modifier = Modifier.menuAnchor().fillMaxWidth()
                     )
-                    if (!isReadOnly) {
-                        ExposedDropdownMenu(
-                            expanded = methodExpanded,
-                            onDismissRequest = { methodExpanded = false }
-                        ) {
-                            methodOptions.forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(option) },
-                                    onClick = {
-                                        viewModel.updateRecord(record.copy(method = option))
-                                        methodExpanded = false
-                                    }
-                                )
-                            }
+                    ExposedDropdownMenu(
+                        expanded = methodExpanded,
+                        onDismissRequest = { methodExpanded = false }
+                    ) {
+                        methodOptions.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option) },
+                                onClick = {
+                                    viewModel.updateRecord(record.copy(method = option))
+                                    methodExpanded = false
+                                }
+                            )
                         }
                     }
                 }
@@ -218,8 +278,8 @@ fun ApprovalDetailScreen(
                 // 帳戶/信用卡
                 var cardExpanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(
-                    expanded = if (isReadOnly) false else cardExpanded,
-                    onExpandedChange = { if (!isReadOnly) cardExpanded = !cardExpanded },
+                    expanded = cardExpanded,
+                    onExpandedChange = { cardExpanded = !cardExpanded },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     TextField(
@@ -227,41 +287,37 @@ fun ApprovalDetailScreen(
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("帳戶/信用卡") },
-                        trailingIcon = { if (!isReadOnly) ExposedDropdownMenuDefaults.TrailingIcon(expanded = cardExpanded) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = cardExpanded) },
                         modifier = Modifier.menuAnchor().fillMaxWidth()
                     )
-                    if (!isReadOnly) {
-                        ExposedDropdownMenu(
-                            expanded = cardExpanded,
-                            onDismissRequest = { cardExpanded = false }
-                        ) {
+                    ExposedDropdownMenu(
+                        expanded = cardExpanded,
+                        onDismissRequest = { cardExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("(無)") },
+                            onClick = {
+                                viewModel.updateRecord(record.copy(account = null, cardLast4 = null))
+                                cardExpanded = false
+                            }
+                        )
+                        uiState.cards.forEach { card ->
                             DropdownMenuItem(
-                                text = { Text("(無)") },
+                                text = { Text("${card.name}${card.last4?.let { " ($it)" } ?: ""}") },
                                 onClick = {
-                                    viewModel.updateRecord(record.copy(account = null, cardLast4 = null))
+                                    viewModel.updateRecord(record.copy(account = card.name, cardLast4 = card.last4))
                                     cardExpanded = false
                                 }
                             )
-                            uiState.cards.forEach { card ->
-                                DropdownMenuItem(
-                                    text = { Text("${card.name}${card.last4?.let { " ($it)" } ?: ""}") },
-                                    onClick = {
-                                        viewModel.updateRecord(record.copy(account = card.name, cardLast4 = card.last4))
-                                        cardExpanded = false
-                                    }
-                                )
-                            }
                         }
                     }
                 }
 
-                if (!isReadOnly) {
-                    Button(
-                        onClick = { viewModel.approve() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("核准並送出")
-                    }
+                Button(
+                    onClick = { viewModel.approve() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (record.status == PaymentStatus.APPROVED) "儲存修改" else "核准並送出")
                 }
             }
         }
@@ -295,11 +351,16 @@ private fun SelectTagDialog(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                val tagColor = try {
+                                    Color(android.graphics.Color.parseColor(tag.color))
+                                } catch (e: Exception) {
+                                    MaterialTheme.colorScheme.secondaryContainer
+                                }
                                 Box(
                                     modifier = Modifier
                                         .size(20.dp)
                                         .clip(CircleShape)
-                                        .background(Color(android.graphics.Color.parseColor(tag.color)))
+                                        .background(tagColor)
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(tag.name)

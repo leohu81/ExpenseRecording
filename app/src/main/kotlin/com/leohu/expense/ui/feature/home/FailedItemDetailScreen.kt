@@ -5,8 +5,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +14,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.leohu.expense.domain.model.SourceImageStatus
 import java.io.File
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import coil.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,12 +29,35 @@ fun FailedItemDetailScreen(
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = androidx.compose.ui.platform.LocalContext.current
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.isFinished) {
+        if (uiState.isFinished) {
+            onNavigateBack()
+        }
+    }
 
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
         }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("刪除項目") },
+            text = { Text("確定要刪除此收據圖片及其關聯資料嗎？") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.deleteItem() }) {
+                    Text("刪除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
+            }
+        )
     }
 
     val sourceImage = uiState.sourceImage
@@ -52,6 +77,11 @@ fun FailedItemDetailScreen(
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
+                },
+                actions = {
+                    IconButton(onClick = { showDeleteConfirm = true }) {
+                        Icon(Icons.Default.Delete, contentDescription = "刪除", tint = MaterialTheme.colorScheme.error)
+                    }
                 }
             )
         },
@@ -67,28 +97,20 @@ fun FailedItemDetailScreen(
             Column(
                 modifier = Modifier
                     .padding(padding)
-                    .padding(16.dp)
+                    .fillMaxSize()
                     .verticalScroll(scrollState)
-                    .fillMaxSize(),
+                    .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // 顯示原始截圖
-                sourceImage.localPath.let { path ->
-                    File(path).takeIf { it.exists() }?.let { file ->
-                        BitmapFactory.decodeFile(file.absolutePath)?.let { bitmap ->
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "原始截圖",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(300.dp),
-                                contentScale = ContentScale.Fit
-                            )
-                        }
-                    }
-                }
+                AsyncImage(
+                    model = File(sourceImage.localPath),
+                    contentDescription = "原始截圖",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp),
+                    contentScale = ContentScale.Fit
+                )
 
-                // 只有失敗或有錯誤時才顯示解析失敗原因區塊
                 if (sourceImage.status == SourceImageStatus.FAILED || sourceImage.lastError != null) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -106,7 +128,6 @@ fun FailedItemDetailScreen(
                     }
                 }
 
-                // 顯示欄位（唯讀）
                 TextField(
                     value = record?.description ?: "",
                     onValueChange = { /* 唯讀 */ },
@@ -140,49 +161,24 @@ fun FailedItemDetailScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                TextField(
-                    value = record?.method ?: "",
-                    onValueChange = { /* 唯讀 */ },
-                    label = { Text("支付方式") },
-                    readOnly = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                TextField(
-                    value = record?.account ?: "",
-                    onValueChange = { /* 唯讀 */ },
-                    label = { Text("帳戶/信用卡") },
-                    readOnly = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // 幣別顯示
-                val displayCurrency = record?.currency ?: "TWD"
-                if (displayCurrency.uppercase() != "TWD") {
-                    Text(
-                        text = "幣別：$displayCurrency",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                if (sourceImage.status == SourceImageStatus.FAILED) {
+                if (sourceImage.status == SourceImageStatus.FAILED || sourceImage.status == SourceImageStatus.PENDING_OCR) {
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     Button(
                         onClick = { viewModel.retryParse(context) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("再次送出解析")
+                        Text(if (sourceImage.status == SourceImageStatus.PENDING_OCR) "啟動解析流程" else "再次送出解析")
                     }
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     Button(
                         onClick = { viewModel.approve() },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                     ) {
-                        Text("核准並送出")
+                        Text("直接手動核准")
                     }
                 }
             }

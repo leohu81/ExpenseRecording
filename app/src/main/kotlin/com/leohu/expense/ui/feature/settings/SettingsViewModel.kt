@@ -32,7 +32,6 @@ class SettingsViewModel(
 
     private val gson = Gson()
     
-    // 使用 StateFlow 確保 UI 能觀察到變化
     private val _enablePreParseEdit = MutableStateFlow(preferenceHelper.getBool(PreferenceHelper.KEY_ENABLE_PRE_PARSE_EDIT, false))
     val enablePreParseEdit: StateFlow<Boolean> = _enablePreParseEdit.asStateFlow()
 
@@ -79,12 +78,10 @@ class SettingsViewModel(
                     return@launch
                 }
 
-                // Import Credit Cards
                 backup.creditCards?.forEach { card ->
                     repository.addCreditCard(card)
                 }
                 
-                // Import E-Wallets
                 backup.eWalletAccounts?.forEach { account ->
                     repository.addEWalletAccount(account)
                 }
@@ -104,30 +101,26 @@ class SettingsViewModel(
                     com.leohu.expense.domain.model.PaymentStatus.APPROVED
                 ).first()
                 
-                // 取得所有 Tag 以便查名
                 val tags = repository.getAllTags().first()
                 val tagMap = tags.associateBy { it.id }
                 
                 val csvBuilder = StringBuilder()
-                // Header - 新增 "標籤" 欄位
-                csvBuilder.appendLine("日期,金額,幣別,支付方式,帳戶,末四碼,商家,標籤,時間戳記")
+                // Header - 更新為包含約當台幣
+                csvBuilder.appendLine("日期,金額,幣別,約當台幣,支付方式,帳戶,末四碼,商家,標籤,時間戳記")
                 
-                // Data rows
                 records.forEach { record ->
                     val date = record.consumeDate ?: ""
                     val amount = record.amount
                     val currency = record.currency ?: "TWD"
+                    val amountTwd = record.amountTwd ?: amount
                     val method = record.method
                     val account = record.account ?: ""
                     val cardLast4 = record.cardLast4 ?: ""
                     val description = (record.description ?: "").replace(",", ";")
-                    
-                    // 將 Tag ID 轉換為名稱並用分號隔開
                     val tagNames = record.tags.mapNotNull { tagMap[it]?.name }.joinToString(";")
-                    
                     val timestamp = record.approvedAt ?: record.createdAt
                     
-                    csvBuilder.appendLine("$date,$amount,$currency,$method,$account,$cardLast4,$description,$tagNames,$timestamp")
+                    csvBuilder.appendLine("$date,$amount,$currency,$amountTwd,$method,$account,$cardLast4,$description,$tagNames,$timestamp")
                 }
                 
                 context.contentResolver.openOutputStream(uri)?.use { outputStream ->
@@ -168,20 +161,16 @@ class SettingsViewModel(
 
     fun simulateParsingFailure() {
         viewModelScope.launch {
-            // 從所有圖片中尋找，不限 PENDING_OCR，增加成功率
             val allImages = repository.getAllSourceImages().first()
             val image = allImages.firstOrNull { it.status != SourceImageStatus.FAILED }
             
             if (image != null) {
-                android.util.Log.d("ExpenseApp", "模擬失敗：選中圖片 ${image.id}")
                 repository.updateSourceImage(
                     image.copy(
                         status = SourceImageStatus.FAILED,
                         lastError = "模擬解析失敗：由使用者手動觸發"
                     )
                 )
-            } else {
-                android.util.Log.e("ExpenseApp", "模擬失敗：找不到可用的圖片")
             }
         }
     }
@@ -191,7 +180,6 @@ class SettingsViewModel(
         private val cleanupUseCase: CleanupOldApprovedRecordsUseCase,
         private val preferenceHelper: PreferenceHelper
     ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return SettingsViewModel(repository, cleanupUseCase, preferenceHelper) as T
         }

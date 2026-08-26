@@ -13,28 +13,56 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 
-data class ImageHistoryItem(
-    val sourceImage: SourceImage,
-    val paymentRecords: List<PaymentRecord> = emptyList()
-)
+/**
+ * 歷史記錄顯示項目的密封類
+ */
+sealed class HistoryUiItem {
+    // 獨立的消費記錄（即使多筆記錄屬於同一張圖，也拆開顯示）
+    data class Record(val record: PaymentRecord, val sourceImage: SourceImage?) : HistoryUiItem()
+    // 只有圖片但還沒有記錄的項目（等待解析、解析中、解析失敗）
+    data class ImageOnly(val sourceImage: SourceImage) : HistoryUiItem()
+
+    val id: String get() = when(this) {
+        is Record -> record.id
+        is ImageOnly -> sourceImage.id
+    }
+
+    val createdAt: Long get() = when(this) {
+        is Record -> record.createdAt
+        is ImageOnly -> sourceImage.createdAt
+    }
+}
 
 class HistoryViewModel(private val repository: ExpenseRepository) : ViewModel() {
 
-    val allImages: StateFlow<List<SourceImage>> = repository
-        .getAllSourceImages()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val allImages = repository.getAllSourceImages()
+    private val readyRecords = repository.getPaymentRecordsByStatus(PaymentStatus.READY_FOR_APPROVAL)
+    private val approvedRecords = repository.getPaymentRecordsByStatus(PaymentStatus.APPROVED)
 
-    val historyItems: StateFlow<List<ImageHistoryItem>> = combine(
+    val historyItems: StateFlow<List<HistoryUiItem>> = combine(
         allImages,
-        repository.getPaymentRecordsByStatus(PaymentStatus.READY_FOR_APPROVAL),
-        repository.getPaymentRecordsByStatus(PaymentStatus.APPROVED)
-    ) { images, readyRecords, approvedRecords ->
-        val allRecords = readyRecords + approvedRecords
-        images.map { image ->
-            // 不管圖片狀態，只要有關聯的 record 都抓出來顯示
-            val records = allRecords.filter { it.sourceImageId == image.id }
-            ImageHistoryItem(sourceImage = image, paymentRecords = records)
+        readyRecords,
+        approvedRecords
+    ) { images, ready, approved ->
+        val allRecords = ready + approved
+        val items = mutableListOf<HistoryUiItem>()
+        
+        // 1. 先處理所有的消費記錄
+        allRecords.forEach { record ->
+            val image = images.find { it.id == record.sourceImageId }
+            items.add(HistoryUiItem.Record(record, image))
         }
+        
+        // 2. 處理還沒有產生記錄的圖片（例如解析中或失敗的）
+        images.forEach { image ->
+            val hasRecord = allRecords.any { it.sourceImageId == image.id }
+            if (!hasRecord) {
+                items.add(HistoryUiItem.ImageOnly(image))
+            }
+        }
+        
+        // 按時間倒序排列
+        items.sortedByDescending { it.createdAt }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     class Factory(private val repository: ExpenseRepository) : ViewModelProvider.Factory {

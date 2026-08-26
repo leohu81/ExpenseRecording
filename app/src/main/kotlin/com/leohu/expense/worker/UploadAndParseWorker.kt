@@ -54,12 +54,11 @@ class UploadAndParseWorker(
                     account = dto.account,
                     cardLast4 = dto.card_last4,
                     amount = dto.amount,
+                    amountTwd = dto.amount_twd, // 從 AI 結果取得
                     currency = dto.currency,
                     consumeDate = dto.date,
-                    // 優先使用使用者提供的事前說明
                     description = sourceImage.preDescription ?: dto.description,
                     status = PaymentStatus.READY_FOR_APPROVAL,
-                    // 繼承使用者事前設定的 Tag
                     tags = sourceImage.tags,
                     createdAt = System.currentTimeMillis()
                 )

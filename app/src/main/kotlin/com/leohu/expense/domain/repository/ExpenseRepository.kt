@@ -10,6 +10,7 @@ interface ExpenseRepository {
     suspend fun getSourceImageById(id: String): SourceImage?
     fun getAllSourceImages(): Flow<List<SourceImage>>
     suspend fun updateSourceImage(image: SourceImage)
+    suspend fun deleteSourceImage(id: String)
     
     // PaymentRecord
     fun getPaymentRecordsByStatus(status: PaymentStatus): Flow<List<PaymentRecord>>

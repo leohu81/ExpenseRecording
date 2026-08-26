@@ -14,7 +14,7 @@ import com.leohu.expense.data.local.entity.*
         TagEntity::class,
         PaymentRecordTagEntity::class
     ],
-    version = 3, // 升級至 v3
+    version = 4, // 升級至 v4
     exportSchema = false
 )
 @TypeConverters(Converters::class)
