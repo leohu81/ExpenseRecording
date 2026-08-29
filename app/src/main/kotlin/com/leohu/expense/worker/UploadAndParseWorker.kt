@@ -32,19 +32,26 @@ class UploadAndParseWorker(
                 lastError = if (runAttemptCount > 0) "正在解析..." else null
             ))
             
-            val imageFile = File(sourceImage.localPath)
-            if (!imageFile.exists()) {
-                repository.updateSourceImage(sourceImage.copy(
-                    status = SourceImageStatus.FAILED,
-                    lastError = "圖片檔案不存在"
-                ))
-                return Result.failure()
-            }
-
             val ewalletAccounts = repository.getAllEWalletAccounts()
             val cards = repository.getCreditCards().firstOrNull() ?: emptyList()
             
-            val response = repository.parseReceipt(imageId, imageFile, ewalletAccounts, cards)
+            val response = if (sourceImage.localPath.startsWith("voice_input://")) {
+                repository.parseVoiceInput(
+                    voiceText = sourceImage.preDescription ?: "",
+                    ewalletAccounts = ewalletAccounts,
+                    creditCards = cards
+                )
+            } else {
+                val imageFile = File(sourceImage.localPath)
+                if (!imageFile.exists()) {
+                    repository.updateSourceImage(sourceImage.copy(
+                        status = SourceImageStatus.FAILED,
+                        lastError = "圖片檔案不存在"
+                    ))
+                    return Result.failure()
+                }
+                repository.parseReceipt(imageId, imageFile, ewalletAccounts, cards)
+            }
             
             val paymentRecords = response.transactions.map { dto ->
                 PaymentRecord(
@@ -57,7 +64,8 @@ class UploadAndParseWorker(
                     amountTwd = dto.amount_twd, // 從 AI 結果取得
                     currency = dto.currency,
                     consumeDate = dto.date,
-                    description = sourceImage.preDescription ?: dto.description,
+                    // 優先使用 LLM 解析出的商家名稱，若為空才使用原始語音內容
+                    description = dto.description.ifEmpty { sourceImage.preDescription },
                     status = PaymentStatus.READY_FOR_APPROVAL,
                     tags = sourceImage.tags,
                     createdAt = System.currentTimeMillis()

@@ -9,12 +9,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicNone
 import androidx.compose.material.icons.filled.Send
@@ -88,19 +90,9 @@ fun VoiceInputScreen(
             override fun onPartialResults(partialResults: android.os.Bundle) {}
 
             override fun onError(error: Int) {
-                val errorMsg = when (error) {
-                    1 -> "音效錯誤" // ERROR_AUDIO
-                    2 -> "客戶端錯誤" // ERROR_CLIENT
-                    7 -> "權限不足" // ERROR_INSUFFICIENT_PERMISSIONS / ERROR_NO_MATCH
-                    6 -> "網路錯誤" // ERROR_NETWORK
-                    5 -> "服務忙碌" // ERROR_RECOGNIZER_BUSY
-                    else -> "辨識錯誤 ($error)"
-                }
+                // 不顯示錯誤訊息，只是靜默處理
                 isListening = false
                 speechRecognizer?.stopListening()
-                scope.launch {
-                    snackbarHostState.showSnackbar(errorMsg)
-                }
             }
 
             override fun onReadyForSpeech(params: android.os.Bundle) {}
@@ -126,12 +118,6 @@ fun VoiceInputScreen(
         }
     }
 
-    LaunchedEffect(uiState.isProcessing) {
-        if (!uiState.isProcessing) {
-            onSuccess()
-        }
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -154,7 +140,7 @@ fun VoiceInputScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // 麥克風按鈕區域
+            // 麥克風按鈕區域 - 點擊可開始/停止錄音
             Box(
                 modifier = Modifier
                     .size(160.dp)
@@ -164,7 +150,28 @@ fun VoiceInputScreen(
                             MaterialTheme.colorScheme.primaryContainer
                         else
                             MaterialTheme.colorScheme.surfaceVariant
-                    ),
+                    )
+                    .clickable {
+                        if (isListening) {
+                            stopListening()
+                        } else {
+                            when {
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+                                    if (ContextCompat.checkSelfPermission(
+                                            context, Manifest.permission.RECORD_AUDIO
+                                        ) == PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        startListening()
+                                    } else {
+                                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                }
+                                else -> {
+                                    startListening()
+                                }
+                            }
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 if (isListening) {
@@ -204,7 +211,7 @@ fun VoiceInputScreen(
 
             // 操作說明
             Text(
-                text = if (isListening) "請說話，說完後按停止" else "點擊麥克風開始錄音",
+                text = if (isListening) "點擊麥克風停止錄音" else "點擊麥克風開始錄音",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -228,7 +235,19 @@ fun VoiceInputScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (!isListening) {
+                // 停止按鈕 (錄音中時顯示)
+                if (isListening) {
+                    Button(
+                        onClick = ::stopListening,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("停止")
+                    }
+                } else {
+                    // 開始錄音按鈕
                     Button(
                         onClick = {
                             when {
@@ -253,36 +272,22 @@ fun VoiceInputScreen(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(if (uiState.recognizedText.isNotEmpty()) "繼續說" else "開始錄音")
                     }
-
-                    if (isListening) {
-                        OutlinedButton(
-                            onClick = ::stopListening,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("停止")
-                        }
-                    }
                 }
 
+                // 確認送出按鈕
                 Button(
                     onClick = {
                         if (uiState.recognizedText.isNotEmpty()) {
-                            viewModel.sendToLLM()
+                            viewModel.enqueueVoiceParsing(context)
+                            onSuccess()
                         }
                     },
                     modifier = Modifier.weight(1f),
-                    enabled = uiState.recognizedText.isNotEmpty() && !uiState.isProcessing
+                    enabled = uiState.recognizedText.isNotEmpty()
                 ) {
-                    if (uiState.isProcessing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    } else {
-                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
-                    }
+                    Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (uiState.isProcessing) "解析中..." else "確認")
+                    Text("確認送出")
                 }
             }
 

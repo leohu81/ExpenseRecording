@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
 import java.util.*
 
 class ExpenseRepositoryImpl(
@@ -349,6 +350,9 @@ class ExpenseRepositoryImpl(
             "【已知信用卡】：(未設定)"
         }
 
+        // 計算今天日期
+        val todayDate = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(Date())
+        
         val prompt = StringBuilder().apply {
             appendLine("請分析以下消費描述，提取所有交易資訊。")
             appendLine()
@@ -383,7 +387,7 @@ class ExpenseRepositoryImpl(
             appendLine("→ account = null")
             appendLine()
             appendLine("其他規則：")
-            appendLine("- 日期如未提及，使用今天日期 (YYYY/MM/DD)")
+            appendLine("- 日期如未提及，使用今天日期 (YYYY/MM/DD)，今天是: $todayDate")
             appendLine("- 幣別如未提及，預設為 TWD")
             appendLine("- 描述需轉換為繁體中文")
             appendLine("- 如果有多个消费项目，分别列出")

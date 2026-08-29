@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.leohu.expense.domain.model.*
 import com.leohu.expense.domain.repository.ExpenseRepository
 import com.leohu.expense.worker.ImageCompressWorker
+import com.leohu.expense.worker.UploadAndParseWorker
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import androidx.work.OneTimeWorkRequestBuilder
@@ -85,10 +86,20 @@ class FailedItemDetailViewModel(
                         )
                     )
                     
-                    val compressRequest = OneTimeWorkRequestBuilder<ImageCompressWorker>()
-                        .setInputData(workDataOf("image_id" to sourceImageId))
-                        .build()
-                    WorkManager.getInstance(context).enqueue(compressRequest)
+                    // 區分語音輸入和圖片輸入
+                    if (sourceImage.localPath.startsWith("voice_input://")) {
+                        // 語音輸入：直接啟動 UploadAndParseWorker
+                        val parseRequest = OneTimeWorkRequestBuilder<UploadAndParseWorker>()
+                            .setInputData(workDataOf("image_id" to sourceImageId))
+                            .build()
+                        WorkManager.getInstance(context).enqueue(parseRequest)
+                    } else {
+                        // 圖片輸入：先壓縮再解析
+                        val compressRequest = OneTimeWorkRequestBuilder<ImageCompressWorker>()
+                            .setInputData(workDataOf("image_id" to sourceImageId))
+                            .build()
+                        WorkManager.getInstance(context).enqueue(compressRequest)
+                    }
                     _isFinished.value = true
                 }
             } catch (e: Exception) {

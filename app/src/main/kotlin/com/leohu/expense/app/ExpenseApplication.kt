@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.leohu.expense.data.local.db.AppDatabase
 import com.leohu.expense.data.remote.api.AgnesApi
 import com.leohu.expense.data.remote.api.WebhookApi
+import com.leohu.expense.data.remote.dto.AgnesResponseDto
 import com.leohu.expense.data.repository.ExpenseRepositoryImpl
 import com.leohu.expense.domain.model.*
 import com.leohu.expense.domain.repository.ExpenseRepository
@@ -134,6 +135,11 @@ class ExpenseApplication : Application() {
             override suspend fun getTagsForPaymentRecord(paymentRecordId: String) = flow { emit(emptyList<Tag>()) }
             override suspend fun addTagToPayment(paymentRecordId: String, tagId: String) {}
             override suspend fun removeTagFromPayment(paymentRecordId: String, tagId: String) {}
+            override suspend fun parseVoiceInput(
+                voiceText: String,
+                ewalletAccounts: List<EWalletAccount>,
+                creditCards: List<CreditCard>
+            ): AgnesResponseDto = throw UnsupportedOperationException("Voice input not supported in default repository")
         }
     }
 }

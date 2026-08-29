@@ -4,13 +4,6 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.leohu.expense.data.remote.dto.AgnesResponseDto
-import com.leohu.expense.data.remote.dto.AgnesTransactionDto
-import com.leohu.expense.data.repository.ExpenseRepositoryImpl
-import com.leohu.expense.domain.model.CreditCard
-import com.leohu.expense.domain.model.EWalletAccount
-import com.leohu.expense.domain.model.PaymentRecord
-import com.leohu.expense.domain.model.PaymentStatus
 import com.leohu.expense.domain.model.SourceImage
 import com.leohu.expense.domain.model.SourceImageStatus
 import com.leohu.expense.domain.repository.ExpenseRepository
@@ -50,64 +43,32 @@ class VoiceInputViewModel(
         _uiState.value = _uiState.value.copy(errorMessage = null)
     }
 
-    fun sendToLLM() {
+    fun enqueueVoiceParsing(context: Context) {
+        val text = _uiState.value.recognizedText
+        if (text.isBlank()) return
+        
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isProcessing = true, errorMessage = null)
-
             try {
-                // 1. 建立 SourceImage (語音輸入用特殊標記)
-                val voiceId = UUID.randomUUID().toString()
+                // 1. 建立 SourceImage (語音輸入用特殊標記，將文字存入 preDescription)
+                val voiceId = repository.enqueueSourceImage("voice_input://$text")
+                // 更新 preDescription
                 val voiceSourceImage = SourceImage(
                     id = voiceId,
                     localPath = "voice_input://$voiceId",
                     createdAt = System.currentTimeMillis(),
-                    status = SourceImageStatus.PENDING_OCR
+                    status = SourceImageStatus.PENDING_OCR,
+                    preDescription = text
                 )
                 repository.updateSourceImage(voiceSourceImage)
 
-                // 2. 取得電子支付和信用卡資訊
-                val ewallets = repository.getAllEWalletAccounts()
-                val cards = mutableListOf<CreditCard>()
-                repository.getCreditCards().collect { cardList ->
-                    cards.addAll(cardList)
-                }
-
-                // 3. 呼叫 LLM 解析
-                val response = (repository as? ExpenseRepositoryImpl)
-                    ?.parseVoiceInput(
-                        voiceText = _uiState.value.recognizedText,
-                        ewalletAccounts = ewallets,
-                        creditCards = cards
-                    ) ?: throw Exception("無法解析語音內容")
-
-                // 4. 轉換為 PaymentRecord
-                val paymentRecords = response.transactions.map { dto: AgnesTransactionDto ->
-                    PaymentRecord(
-                        id = UUID.randomUUID().toString(),
-                        sourceImageId = voiceId,
-                        method = dto.method,
-                        account = dto.account,
-                        cardLast4 = dto.card_last4,
-                        amount = dto.amount,
-                        amountTwd = dto.amount_twd,
-                        currency = dto.currency,
-                        consumeDate = dto.date,
-                        description = dto.description,
-                        status = PaymentStatus.READY_FOR_APPROVAL,
-                        tags = emptyList(),
-                        createdAt = System.currentTimeMillis()
-                    )
-                }
-
-                // 5. 儲存記錄
-                repository.createPaymentRecords(voiceId, paymentRecords)
-
-                _uiState.value = _uiState.value.copy(isProcessing = false)
+                // 2. 啟動背景 Worker 解析
+                val parseRequest = androidx.work.OneTimeWorkRequestBuilder<com.leohu.expense.worker.UploadAndParseWorker>()
+                    .setInputData(androidx.work.workDataOf("image_id" to voiceId))
+                    .build()
+                
+                androidx.work.WorkManager.getInstance(context).enqueue(parseRequest)
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isProcessing = false,
-                    errorMessage = e.message ?: "解析失敗"
-                )
+                // 靜默處理錯誤
             }
         }
     }
