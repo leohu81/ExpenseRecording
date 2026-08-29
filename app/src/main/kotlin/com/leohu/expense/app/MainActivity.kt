@@ -27,6 +27,7 @@ import com.leohu.expense.ui.feature.settings.SettingsScreen
 import com.leohu.expense.ui.feature.settings.SettingsViewModel
 import com.leohu.expense.ui.feature.manual.ManualEntryScreen
 import com.leohu.expense.ui.feature.manual.ManualEntryViewModel
+import com.leohu.expense.ui.feature.voice.VoiceInputScreen
 import com.leohu.expense.ui.theme.ExpenseAppTheme
 
 class MainActivity : ComponentActivity() {
@@ -53,7 +54,14 @@ class MainActivity : ComponentActivity() {
                             onNavigateToPreParseEdit = { imageIds ->
                                 navController.navigate("pre_parse_edit/${imageIds.joinToString(",")}")
                             },
-                            onNavigateToManualEntry = { navController.navigate("manual_entry") }
+                            onNavigateToManualEntry = { navController.navigate("manual_entry") },
+                            onNavigateToVoiceInput = { navController.navigate("voice_input") }
+                        )
+                    }
+                    composable("voice_input") {
+                        VoiceInputScreen(
+                            onNavigateBack = { navController.popBackStack() },
+                            onSuccess = { navController.popBackStack() }
                         )
                     }
                     composable("manual_entry") {

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,7 +37,8 @@ fun HomeScreen(
     onNavigateToFailedList: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToPreParseEdit: (List<String>) -> Unit,
-    onNavigateToManualEntry: () -> Unit
+    onNavigateToManualEntry: () -> Unit,
+    onNavigateToVoiceInput: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -140,6 +142,15 @@ fun HomeScreen(
                         modifier = Modifier.padding(bottom = 8.dp)
                     ) {
                         Icon(Icons.Default.Edit, contentDescription = "手動輸入")
+                    }
+                    SmallFloatingActionButton(
+                        onClick = {
+                            onNavigateToVoiceInput()
+                            showAddOptions = false
+                        },
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Mic, contentDescription = "語音輸入")
                     }
                     SmallFloatingActionButton(
                         onClick = {

@@ -42,4 +42,11 @@ interface ExpenseRepository {
     suspend fun getTagsForPaymentRecord(paymentRecordId: String): Flow<List<Tag>>
     suspend fun addTagToPayment(paymentRecordId: String, tagId: String)
     suspend fun removeTagFromPayment(paymentRecordId: String, tagId: String)
+    
+    // Voice Input
+    suspend fun parseVoiceInput(
+        voiceText: String,
+        ewalletAccounts: List<EWalletAccount>,
+        creditCards: List<CreditCard>
+    ): com.leohu.expense.data.remote.dto.AgnesResponseDto
 }
