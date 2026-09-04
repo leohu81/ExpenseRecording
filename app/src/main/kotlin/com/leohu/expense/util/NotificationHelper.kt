@@ -12,6 +12,30 @@ import com.leohu.expense.app.MainActivity
 object NotificationHelper {
     private const val CHANNEL_ID = "receipt_parse_channel"
     private const val CHANNEL_NAME = "收據解析通知"
+    private const val PROGRESS_CHANNEL_ID = "parse_progress_channel"
+    private const val PROGRESS_CHANNEL_NAME = "解析進度"
+
+    fun createProgressNotification(context: Context, title: String): android.app.Notification {
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                PROGRESS_CHANNEL_ID,
+                PROGRESS_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "顯示收據解析進度"
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        return NotificationCompat.Builder(context, PROGRESS_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setContentTitle(title)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+    }
 
     fun showParseResultNotification(context: Context, isSuccess: Boolean, message: String) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

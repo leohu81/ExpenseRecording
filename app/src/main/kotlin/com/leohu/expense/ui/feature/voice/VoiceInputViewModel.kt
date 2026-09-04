@@ -64,6 +64,7 @@ class VoiceInputViewModel(
                 // 2. 啟動背景 Worker 解析
                 val parseRequest = androidx.work.OneTimeWorkRequestBuilder<com.leohu.expense.worker.UploadAndParseWorker>()
                     .setInputData(androidx.work.workDataOf("image_id" to voiceId))
+                    .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                     .build()
                 
                 androidx.work.WorkManager.getInstance(context).enqueue(parseRequest)

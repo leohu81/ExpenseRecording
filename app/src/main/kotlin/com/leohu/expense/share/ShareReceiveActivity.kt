@@ -49,6 +49,7 @@ class ShareReceiveActivity : Activity() {
             
             val compressRequest = OneTimeWorkRequestBuilder<ImageCompressWorker>()
                 .setInputData(workDataOf("image_id" to imageId))
+                .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build()
             
             WorkManager.getInstance(applicationContext).enqueue(compressRequest)

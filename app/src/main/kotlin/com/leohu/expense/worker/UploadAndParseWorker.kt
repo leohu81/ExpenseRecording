@@ -8,6 +8,7 @@ import com.leohu.expense.data.repository.ExpenseRepositoryImpl
 import com.leohu.expense.domain.model.PaymentRecord
 import com.leohu.expense.domain.model.PaymentStatus
 import com.leohu.expense.domain.model.SourceImageStatus
+import android.os.Build
 import com.leohu.expense.util.NotificationHelper
 import kotlinx.coroutines.flow.firstOrNull
 import retrofit2.HttpException
@@ -19,11 +20,28 @@ class UploadAndParseWorker(
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
 
+    override suspend fun getForegroundInfo(): androidx.work.ForegroundInfo {
+        val notification = NotificationHelper.createProgressNotification(applicationContext, "正在解析收據內容...")
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            androidx.work.ForegroundInfo(999, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            androidx.work.ForegroundInfo(999, notification)
+        }
+    }
+
     override suspend fun doWork(): Result {
         val imageId = inputData.getString("image_id") ?: return Result.failure()
+        
+        try {
+            setForeground(getForegroundInfo())
+        } catch (e: Exception) {
+            // 在某些 Android 版本上或超出配額時可能會失敗
+        }
+
         val repository = (applicationContext as ExpenseApplication).repository as ExpenseRepositoryImpl
         
         val sourceImage = repository.getSourceImageById(imageId) ?: return Result.failure()
+        
         if (sourceImage.status == SourceImageStatus.READY) return Result.success()
 
         return try {

@@ -50,6 +50,7 @@ class HomeViewModel(private val repository: ExpenseRepository) : ViewModel() {
             
             val compressRequest = OneTimeWorkRequestBuilder<ImageCompressWorker>()
                 .setInputData(workDataOf("image_id" to imageId))
+                .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build()
             
             WorkManager.getInstance(context).enqueue(compressRequest)
@@ -78,6 +79,7 @@ class HomeViewModel(private val repository: ExpenseRepository) : ViewModel() {
                 imageIds.forEach { imageId ->
                     val compressRequest = OneTimeWorkRequestBuilder<ImageCompressWorker>()
                         .setInputData(workDataOf("image_id" to imageId))
+                        .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                         .build()
                     WorkManager.getInstance(context).enqueue(compressRequest)
                 }

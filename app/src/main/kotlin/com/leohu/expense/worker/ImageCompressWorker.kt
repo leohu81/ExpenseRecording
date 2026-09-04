@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.net.Uri
+import android.os.Build
 import androidx.exifinterface.media.ExifInterface
 import androidx.work.*
 import com.leohu.expense.app.ExpenseApplication
@@ -20,8 +21,24 @@ class ImageCompressWorker(
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
 
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val notification = com.leohu.expense.util.NotificationHelper.createProgressNotification(applicationContext, "正在處理收據圖片...")
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(998, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(998, notification)
+        }
+    }
+
     override suspend fun doWork(): Result {
         val imageId = inputData.getString("image_id") ?: return Result.failure()
+
+        try {
+            setForeground(getForegroundInfo())
+        } catch (e: Exception) {
+            // 忽略
+        }
+
         val repository = (applicationContext as ExpenseApplication).repository
         
         val sourceImage = repository.getSourceImageById(imageId) ?: return Result.failure()
@@ -64,6 +81,7 @@ class ImageCompressWorker(
 
             val uploadRequest = OneTimeWorkRequestBuilder<UploadAndParseWorker>()
                 .setInputData(workDataOf("image_id" to imageId))
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build()
             

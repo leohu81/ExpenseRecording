@@ -91,12 +91,14 @@ class FailedItemDetailViewModel(
                         // 語音輸入：直接啟動 UploadAndParseWorker
                         val parseRequest = OneTimeWorkRequestBuilder<UploadAndParseWorker>()
                             .setInputData(workDataOf("image_id" to sourceImageId))
+                            .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                             .build()
                         WorkManager.getInstance(context).enqueue(parseRequest)
                     } else {
                         // 圖片輸入：先壓縮再解析
                         val compressRequest = OneTimeWorkRequestBuilder<ImageCompressWorker>()
                             .setInputData(workDataOf("image_id" to sourceImageId))
+                            .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                             .build()
                         WorkManager.getInstance(context).enqueue(compressRequest)
                     }

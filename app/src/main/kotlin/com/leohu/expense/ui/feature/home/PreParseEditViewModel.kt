@@ -128,6 +128,7 @@ class PreParseEditViewModel(
                     
                     val compressRequest = OneTimeWorkRequestBuilder<ImageCompressWorker>()
                         .setInputData(workDataOf("image_id" to item.id))
+                        .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                         .build()
                     WorkManager.getInstance(context).enqueue(compressRequest)
                 }
