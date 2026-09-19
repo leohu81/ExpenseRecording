@@ -4,7 +4,7 @@ import retrofit2.http.GET
 import retrofit2.http.QueryMap
 
 interface WebhookApi {
-    @GET("webhook/ExpenseCheck3")
+    @GET("webhook/expense-insert")
     suspend fun sendExpense(
         @QueryMap params: Map<String, String>
     )

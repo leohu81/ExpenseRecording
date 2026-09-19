@@ -13,6 +13,10 @@ class PreferenceHelper(private val context: Context) {
         const val MODE_CLOUD = "cloud"
         const val MODE_LOCAL = "local"
         const val KEY_ENABLE_PRE_PARSE_EDIT = "enable_pre_parse_edit"
+        
+        // PostgreSQL Profile 相關
+        const val KEY_PG_PROFILES = "pg_profiles"
+        const val KEY_CURRENT_PG_PROFILE_ID = "current_pg_profile_id"
     }
     
     fun getStorageMode(): String = 
@@ -32,4 +36,17 @@ class PreferenceHelper(private val context: Context) {
     fun getBoolFlow(key: String, default: Boolean): Flow<Boolean> = flow {
         emit(getBool(key, default))
     }
+    
+    // PostgreSQL 相關方法
+    fun savePgProfiles(json: String) {
+        prefs.edit().putString(KEY_PG_PROFILES, json).apply()
+    }
+    
+    fun getPgProfilesJson(): String? = prefs.getString(KEY_PG_PROFILES, null)
+    
+    fun setCurrentPgProfileId(profileId: String) {
+        prefs.edit().putString(KEY_CURRENT_PG_PROFILE_ID, profileId).apply()
+    }
+    
+    fun getCurrentPgProfileId(): String? = prefs.getString(KEY_CURRENT_PG_PROFILE_ID, null)
 }

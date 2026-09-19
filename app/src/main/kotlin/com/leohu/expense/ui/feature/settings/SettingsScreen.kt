@@ -25,7 +25,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToCards: () -> Unit,
-    onNavigateToEWallets: () -> Unit
+    onNavigateToEWallets: () -> Unit,
+    onNavigateToDatabaseSettings: () -> Unit
 ) {
     val context = LocalContext.current
     var retentionDays by remember { mutableStateOf("90") }
@@ -228,6 +229,16 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+
+            HorizontalDivider()
+
+            // Database Settings Button
+            Button(
+                onClick = { onNavigateToDatabaseSettings() },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("數據庫設置")
             }
 
             HorizontalDivider()

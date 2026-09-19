@@ -140,7 +140,8 @@ class ExpenseRepositoryImpl(
             "amount_twd" to (record.amountTwd ?: record.amount).toString(),
             "description" to (record.description ?: ""),
             "date" to (record.consumeDate ?: ""),
-            "currency" to (record.currency ?: "TWD")
+            "currency" to (record.currency ?: "TWD"),
+            "local_id" to record.id
         )
         record.account?.let { params["account"] = it }
         record.cardLast4?.let { params["card_last4"] = it }

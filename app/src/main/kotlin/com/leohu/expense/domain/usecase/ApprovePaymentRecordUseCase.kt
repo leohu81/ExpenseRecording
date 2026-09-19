@@ -1,26 +1,33 @@
 package com.leohu.expense.domain.usecase
 
+import com.leohu.expense.data.remote.db.PostgreSQLClient
 import com.leohu.expense.domain.model.PaymentStatus
 import com.leohu.expense.domain.repository.ExpenseRepository
+import com.leohu.expense.util.PreferenceHelper
 
-class ApprovePaymentRecordUseCase(private val repository: ExpenseRepository) {
-    suspend operator fun invoke(recordId: String) {
+class ApprovePaymentRecordUseCase(
+    private val repository: ExpenseRepository,
+    private val preferenceHelper: PreferenceHelper,
+    private val pgClient: PostgreSQLClient
+) {
+    suspend operator fun invoke(recordId: String, syncWithServer: Boolean = true) {
         val record = repository.getPaymentRecordById(recordId) ?: return
         if (record.status == PaymentStatus.READY_FOR_APPROVAL) {
             try {
-                // 1. Send to webhook
-                repository.sendToWebhook(record)
-                
-                // 2. Update status in local DB
+                // Update status to APPROVED first
                 val approvedRecord = record.copy(
                     status = PaymentStatus.APPROVED,
                     approvedAt = System.currentTimeMillis()
                 )
                 repository.updatePaymentRecord(approvedRecord)
+                
+                // If cloud mode is enabled and sync is requested, sync to PostgreSQL
+                if (syncWithServer && preferenceHelper.getStorageMode() == PreferenceHelper.MODE_CLOUD) {
+                    pgClient.insertPaymentRecord(approvedRecord)
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
-                // You might want to handle this better, e.g., re-throwing or notifying UI
-                throw e 
+                throw e
             }
         }
     }

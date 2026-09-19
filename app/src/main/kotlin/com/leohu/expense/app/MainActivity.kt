@@ -1,5 +1,6 @@
 package com.leohu.expense.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,6 +10,9 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.navArgument
 import com.leohu.expense.domain.usecase.ApprovePaymentRecordUseCase
 import com.leohu.expense.domain.usecase.CleanupOldApprovedRecordsUseCase
@@ -23,25 +27,62 @@ import com.leohu.expense.ui.feature.ewallets.EWalletViewModel
 import com.leohu.expense.ui.feature.history.HistoryScreen
 import com.leohu.expense.ui.feature.history.HistoryViewModel
 import com.leohu.expense.ui.feature.home.*
+import com.leohu.expense.ui.feature.settings.DatabaseSettingsScreen
+import com.leohu.expense.ui.feature.settings.DatabaseSettingsViewModel
 import com.leohu.expense.ui.feature.settings.SettingsScreen
 import com.leohu.expense.ui.feature.settings.SettingsViewModel
 import com.leohu.expense.ui.feature.manual.ManualEntryScreen
 import com.leohu.expense.ui.feature.manual.ManualEntryViewModel
 import com.leohu.expense.ui.feature.voice.VoiceInputScreen
 import com.leohu.expense.ui.theme.ExpenseAppTheme
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
+
+    private val pendingImageIds = MutableStateFlow<List<String>?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        checkIntent(intent)
+    }
+
+    private fun checkIntent(intent: Intent) {
+        val ids = intent.getStringArrayExtra("image_ids")?.toList()
+        if (ids != null && ids.isNotEmpty()) {
+            pendingImageIds.value = ids
+            intent.removeExtra("image_ids")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        checkIntent(intent)
         
         val repository = (application as ExpenseApplication).repository
-        val approveUseCase = ApprovePaymentRecordUseCase(repository)
-        val cleanupUseCase = CleanupOldApprovedRecordsUseCase(repository)
         val preferenceHelper = (application as ExpenseApplication).preferenceHelper
+        val pgClient = (application as ExpenseApplication).pgClient
+        val approveUseCase = ApprovePaymentRecordUseCase(repository, preferenceHelper, pgClient)
+        val cleanupUseCase = CleanupOldApprovedRecordsUseCase(repository)
 
         setContent {
             ExpenseAppTheme {
                 val navController = rememberNavController()
+                val sharedIds by pendingImageIds.collectAsState()
+
+                // 處理來自分享的跳轉
+                LaunchedEffect(sharedIds) {
+                    val ids = sharedIds
+                    if (ids != null && ids.isNotEmpty()) {
+                        val idsStr = ids.joinToString(",")
+                        navController.navigate("pre_parse_edit/$idsStr") {
+                            launchSingleTop = true
+                        }
+                        // 消費完畢，清除狀態
+                        pendingImageIds.value = null
+                    }
+                }
+
                 NavHost(navController = navController, startDestination = "home") {
                     composable("home") {
                         val viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory(repository))
@@ -101,9 +142,10 @@ class MainActivity : ComponentActivity() {
                         arguments = listOf(navArgument("recordId") { type = NavType.StringType })
                     ) { backStackEntry ->
                         val recordId = backStackEntry.arguments?.getString("recordId") ?: return@composable
+                        val pgClient = (application as ExpenseApplication).pgClient
                         val viewModel: ApprovalDetailViewModel = viewModel(
                             key = recordId,
-                            factory = ApprovalDetailViewModel.Factory(repository, approveUseCase, preferenceHelper, recordId)
+                            factory = ApprovalDetailViewModel.Factory(repository, approveUseCase, preferenceHelper, pgClient, recordId)
                         )
                         ApprovalDetailScreen(
                             viewModel = viewModel,
@@ -172,7 +214,19 @@ class MainActivity : ComponentActivity() {
                             viewModel = viewModel,
                             onNavigateBack = { navController.popBackStack() },
                             onNavigateToCards = { navController.navigate("cards") },
-                            onNavigateToEWallets = { navController.navigate("ewallets") }
+                            onNavigateToEWallets = { navController.navigate("ewallets") },
+                            onNavigateToDatabaseSettings = { navController.navigate("database_settings") }
+                        )
+                    }
+                    composable("database_settings") {
+                        val viewModel: DatabaseSettingsViewModel = viewModel(
+                            factory = DatabaseSettingsViewModel.Factory(
+                                (application as ExpenseApplication).pgClient
+                            )
+                        )
+                        DatabaseSettingsScreen(
+                            viewModel = viewModel,
+                            onNavigateBack = { navController.popBackStack() }
                         )
                     }
                 }

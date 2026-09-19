@@ -11,9 +11,9 @@
       "type": "SINGLE",
       "filters": [],
       "attributes": [],
-      "versionCode": 7,
-      "versionName": "1.6",
-      "outputFile": "expense_recording-v1.6.apk"
+      "versionCode": 13,
+      "versionName": "1.9",
+      "outputFile": "expense_recording-v1.9.apk"
     }
   ],
   "elementType": "File",
@@ -22,16 +22,16 @@
       "minApi": 28,
       "maxApi": 30,
       "baselineProfiles": [
-        "baselineProfiles/1/expense_recording-v1.6.dm"
+        "baselineProfiles/1/expense_recording-v1.9.dm"
       ]
     },
     {
       "minApi": 31,
       "maxApi": 2147483647,
       "baselineProfiles": [
-        "baselineProfiles/0/expense_recording-v1.6.dm"
+        "baselineProfiles/0/expense_recording-v1.9.dm"
       ]
     }
   ],
-  "minSdkVersionForDexing": 24
+  "minSdkVersionForDexing": 26
 }

@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.leohu.expense.data.local.db.AppDatabase
 import com.leohu.expense.data.remote.api.AgnesApi
 import com.leohu.expense.data.remote.api.WebhookApi
+import com.leohu.expense.data.remote.db.PostgreSQLClient
 import com.leohu.expense.data.remote.dto.AgnesResponseDto
 import com.leohu.expense.data.repository.ExpenseRepositoryImpl
 import com.leohu.expense.domain.model.*
@@ -26,6 +27,9 @@ class ExpenseApplication : Application() {
         private set
     
     lateinit var preferenceHelper: PreferenceHelper
+        private set
+        
+    lateinit var pgClient: PostgreSQLClient
         private set
 
     // v3 -> v4: 新增 amountTwd 欄位
@@ -97,9 +101,13 @@ class ExpenseApplication : Application() {
             val webhookApi = retrofitWebhook.create(WebhookApi::class.java)
 
             repository = ExpenseRepositoryImpl(applicationContext, db, agnesApi, webhookApi)
+            
+            // Initialize PostgreSQL client
+            pgClient = PostgreSQLClient(applicationContext)
         } catch (e: Exception) {
             e.printStackTrace()
             repository = createDefaultRepository()
+            pgClient = PostgreSQLClient(applicationContext)
         }
     }
     
