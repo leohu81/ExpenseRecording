@@ -13,8 +13,8 @@ android {
         applicationId = "com.leohu.expense"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "1.9"
+        versionCode = 16
+        versionName = "2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

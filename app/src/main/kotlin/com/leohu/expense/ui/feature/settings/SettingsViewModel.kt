@@ -37,6 +37,10 @@ class SettingsViewModel(
 
     val allTags: Flow<List<Tag>> = repository.getAllTags()
 
+    val storageMode: String get() = preferenceHelper.getStorageMode()
+    val baseUrl: String get() = preferenceHelper.getBaseUrl()
+    val apiKey: String get() = preferenceHelper.getApiKey()
+
     fun cleanupNow(days: Int) {
         viewModelScope.launch {
             cleanupUseCase(days)
@@ -105,7 +109,7 @@ class SettingsViewModel(
                 val tagMap = tags.associateBy { it.id }
                 
                 val csvBuilder = StringBuilder()
-                // Header - 更新為包含約當台幣
+                // Header - 包含約當台幣
                 csvBuilder.appendLine("日期,金額,幣別,約當台幣,支付方式,帳戶,末四碼,商家,標籤,時間戳記")
                 
                 records.forEach { record ->
@@ -140,7 +144,13 @@ class SettingsViewModel(
         preferenceHelper.setStorageMode(mode)
     }
 
-    val storageMode: String get() = preferenceHelper.getStorageMode()
+    fun saveBaseUrl(url: String) {
+        preferenceHelper.saveBaseUrl(url)
+    }
+    
+    fun saveApiKey(key: String) {
+        preferenceHelper.saveApiKey(key)
+    }
 
     fun addTag(name: String, color: String) {
         viewModelScope.launch {

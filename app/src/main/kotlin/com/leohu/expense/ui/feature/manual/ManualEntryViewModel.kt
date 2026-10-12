@@ -126,7 +126,10 @@ class ManualEntryViewModel(
                 repository.updatePaymentRecord(record)
                 
                 if (preferenceHelper.getStorageMode() == PreferenceHelper.MODE_CLOUD) {
-                    repository.sendToWebhook(record)
+                    val baseUrl = preferenceHelper.getBaseUrl()
+                    if (baseUrl.isNotEmpty()) {
+                        repository.syncToN8nInsert(record, baseUrl)
+                    }
                 }
 
                 _uiState.update { it.copy(isSaved = true) }

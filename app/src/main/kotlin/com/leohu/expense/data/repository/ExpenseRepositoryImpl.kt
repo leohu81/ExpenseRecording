@@ -7,10 +7,11 @@ import com.leohu.expense.data.local.db.AppDatabase
 import com.leohu.expense.data.mapper.toDomain
 import com.leohu.expense.data.mapper.toEntity
 import com.leohu.expense.data.remote.api.AgnesApi
-import com.leohu.expense.data.remote.api.WebhookApi
+import com.leohu.expense.data.remote.api.N8nWebhookApi
 import com.leohu.expense.data.remote.dto.*
 import com.leohu.expense.domain.model.*
 import com.leohu.expense.domain.repository.ExpenseRepository
+import com.leohu.expense.util.PreferenceHelper
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -24,8 +25,9 @@ import java.util.*
 class ExpenseRepositoryImpl(
     private val context: Context,
     private val db: AppDatabase,
-    private val api: AgnesApi,
-    private val webhookApi: WebhookApi
+    private val agnesApi: AgnesApi,
+    private val n8nApi: N8nWebhookApi,
+    private val preferenceHelper: PreferenceHelper = PreferenceHelper(context)
 ) : ExpenseRepository {
 
     private val sourceImageDao = db.sourceImageDao()
@@ -88,14 +90,11 @@ class ExpenseRepositoryImpl(
 
     override suspend fun deleteSourceImage(id: String) {
         val entity = sourceImageDao.getById(id) ?: return
-        // 刪除本地檔案
         val file = File(entity.localPath)
         if (file.exists()) {
             file.delete()
         }
-        // 刪除資料庫記錄
         sourceImageDao.delete(entity)
-        // 刪除關聯的 PaymentRecord
         val records = paymentRecordDao.getBySourceImageId(id)
         records.forEach { paymentRecordDao.delete(it) }
     }
@@ -133,22 +132,82 @@ class ExpenseRepositoryImpl(
         paymentRecordDao.deleteOldApproved(threshold)
     }
 
-    override suspend fun sendToWebhook(record: PaymentRecord) {
-        val params = mutableMapOf(
-            "method" to record.method,
-            "amount" to record.amount.toString(),
-            "amount_twd" to (record.amountTwd ?: record.amount).toString(),
-            "description" to (record.description ?: ""),
-            "date" to (record.consumeDate ?: ""),
-            "currency" to (record.currency ?: "TWD"),
-            "local_id" to record.id
-        )
-        record.account?.let { params["account"] = it }
-        record.cardLast4?.let { params["card_last4"] = it }
-        
-        webhookApi.sendExpense(params)
+    // ── Cloud sync via n8n webhook ──────────────────────────────────────────────
+    override suspend fun syncToN8nInsert(
+        record: PaymentRecord,
+        baseUrl: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val params = mapOf(
+                "method" to record.method,
+                "account" to (record.account ?: ""),
+                "amount" to record.amount.toString(),
+                "amount_twd" to (record.amountTwd ?: record.amount).toString(),
+                "currency" to (record.currency ?: "TWD"),
+                "card_last4" to (record.cardLast4 ?: ""),
+                "date" to (record.consumeDate ?: ""),
+                "description" to (record.description ?: ""),
+                "local_id" to record.id
+            )
+            val retrofit = createN8nRetrofit(baseUrl)
+            retrofit.create(N8nWebhookApi::class.java).insertExpense(params)
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
+    override suspend fun syncToN8nUpdate(
+        record: PaymentRecord,
+        baseUrl: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val dto = ExpenseDto(
+                method = record.method,
+                account = record.account,
+                amount = record.amount,
+                amount_twd = record.amountTwd,
+                currency = record.currency,
+                card_last4 = record.cardLast4,
+                consume_date = record.consumeDate,
+                description = record.description,
+                status = record.status.name,
+                local_id = record.id
+            )
+            val retrofit = createN8nRetrofit(baseUrl)
+            retrofit.create(N8nWebhookApi::class.java).updateExpense(record.id, dto)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    override suspend fun syncToN8nDelete(
+        recordId: String,
+        baseUrl: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val retrofit = createN8nRetrofit(baseUrl)
+            retrofit.create(N8nWebhookApi::class.java).deleteExpense(recordId)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun createN8nRetrofit(baseUrl: String): retrofit2.Retrofit {
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        return retrofit2.Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .addConverterFactory(retrofit2.converter.gson.GsonConverterFactory.create())
+            .client(client)
+            .build()
+    }
+
+    // ── Maintenance ─────────────────────────────────────────────────────────────
     override fun getCreditCards(): Flow<List<CreditCard>> {
         return creditCardDao.getAllActive().map { list -> list.map { it.toDomain() } }
     }
@@ -213,8 +272,117 @@ class ExpenseRepositoryImpl(
         val entity = com.leohu.expense.data.local.entity.PaymentRecordTagEntity(paymentRecordId, tagId)
         paymentRecordTagDao.delete(entity)
     }
-    
-    // Helper method for UploadAndParseWorker to use
+
+    // ── Voice input parsing ─────────────────────────────────────────────────────
+    override suspend fun parseVoiceInput(
+        voiceText: String,
+        ewalletAccounts: List<EWalletAccount>,
+        creditCards: List<CreditCard>
+    ): AgnesResponseDto {
+        val cards = if (creditCards.isNotEmpty()) creditCards
+        else creditCardDao.getAll().map { it.toDomain() }.filter { it.isActive }
+        val activeEWallets = if (ewalletAccounts.isNotEmpty()) ewalletAccounts
+        else eWalletAccountDao.getAll().map { it.toDomain() }.filter { it.isActive }
+
+        val ewalletContext = if (activeEWallets.isNotEmpty()) {
+            "【已知電子支付帳戶】\n" +
+                activeEWallets.joinToString("\n") { account ->
+                    "- ${account.name}: keywords='${account.keywords.joinToString()}'"
+                }
+        } else {
+            "【已知電子支付帳戶】：(未設定)"
+        }
+
+        val cardContext = if (cards.isNotEmpty()) {
+            "【已知信用卡】\n" +
+                cards.joinToString("\n") { card ->
+                    "- ${card.name} (尾數${card.last4 ?: "未知"})"
+                }
+        } else {
+            "【已知信用卡】：(未設定)"
+        }
+
+        val todayDate = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(Date())
+
+        val prompt = buildString {
+            appendLine("請分析以下消費描述，提取所有交易資訊。")
+            appendLine()
+            appendLine("用户语音输入：$voiceText")
+            appendLine()
+            appendLine(ewalletContext)
+            appendLine()
+            appendLine(cardContext)
+            appendLine()
+            appendLine("【判斷規則 - 嚴格遵守】")
+            appendLine()
+            appendLine("1. 搜尋語句中是否包含電子支付關鍵字（如 Line Pay、街口、全支付等）")
+            appendLine("2. 搜尋語句中是否提及信用卡/簽帳金融卡/金融卡")
+            appendLine("3. 根據以下規則設定 method 和 account：")
+            appendLine()
+            appendLine("情況 A：有電子支付 + 有信用卡")
+            appendLine("→ method = 電子支付名稱（如 \"Line Pay\"）")
+            appendLine("→ account = 信用卡名稱（如 \"玉山銀行\"）")
+            appendLine("→ 表示透過 Line Pay 綁定玉山銀行信用卡消費")
+            appendLine()
+            appendLine("情況 B：有電子支付 + 無信用卡")
+            appendLine("→ method = 電子支付名稱")
+            appendLine("→ account = null")
+            appendLine()
+            appendLine("情況 C：無電子支付 + 有信用卡")
+            appendLine("→ method = \"一般刷卡\"")
+            appendLine("→ account = 信用卡名稱")
+            appendLine()
+            appendLine("情況 D：無電子支付 + 無信用卡")
+            appendLine("→ method = \"現金\"")
+            appendLine("→ account = null")
+            appendLine()
+            appendLine("其他規則：")
+            appendLine("- 日期如未提及，使用今天日期 (YYYY/MM/DD)，今天是: $todayDate")
+            appendLine("- 幣別如未提及，預設為 TWD")
+            appendLine("- 描述需轉換為繁體中文")
+            appendLine("- 如果有多个消费项目，分别列出")
+            appendLine()
+            appendLine("嚴格輸出 JSON：")
+            appendLine("{")
+            appendLine("  \"schema_version\": 1,")
+            appendLine("  \"transactions\": [")
+            appendLine("    {")
+            appendLine("      \"method\": \"string\",")
+            appendLine("      \"account\": \"string or null\",")
+            appendLine("      \"card_last4\": \"string or null\",")
+            appendLine("      \"amount\": number,")
+            appendLine("      \"amount_twd\": number,")
+            appendLine("      \"currency\": \"string\",")
+            appendLine("      \"date\": \"string\",")
+            appendLine("      \"description\": \"string\"")
+            appendLine("    }")
+            appendLine("  ],")
+            appendLine("  \"confidence\": number")
+            appendLine("}")
+        }
+
+        android.util.Log.d("ExpenseApp", "=== 語音輸入 Prompt ===\n$prompt")
+
+        val request = AgnesRequest(
+            messages = listOf(
+                AgnesMessage(
+                    role = "user",
+                    content = listOf(AgnesContent(type = "text", text = prompt))
+                )
+            )
+        )
+
+        val apiKey = preferenceHelper.getApiKey()
+        if (apiKey.isBlank()) {
+            throw Exception("请先在設定中輸入 Agnes API Key")
+        }
+        val response = agnesApi.chat("Bearer $apiKey", request)
+        val content = response.choices.firstOrNull()?.message?.content
+            ?: throw Exception("Agnes 回傳空內容")
+
+        return parseJsonContent(content)
+    }
+
     suspend fun parseReceipt(
         imageId: String,
         imageFile: File,
@@ -224,29 +392,31 @@ class ExpenseRepositoryImpl(
         val imageBytes = imageFile.readBytes()
         val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
         val dataUri = "data:image/jpeg;base64,$base64Image"
-        
-        val cards = if (creditCards.isNotEmpty()) creditCards else creditCardDao.getAll().map { it.toDomain() }.filter { it.isActive }
-        val activeEWallets = if (ewalletAccounts.isNotEmpty()) ewalletAccounts else eWalletAccountDao.getAll().map { it.toDomain() }.filter { it.isActive }
+
+        val cards = if (creditCards.isNotEmpty()) creditCards
+        else creditCardDao.getAll().map { it.toDomain() }.filter { it.isActive }
+        val activeEWallets = if (ewalletAccounts.isNotEmpty()) ewalletAccounts
+        else eWalletAccountDao.getAll().map { it.toDomain() }.filter { it.isActive }
 
         val ewalletContext = if (activeEWallets.isNotEmpty()) {
-            "Known E-Wallet accounts and their keywords for reference:\n" + 
-            activeEWallets.joinToString("\n") { account -> 
-                "- ${account.name}: keywords='${account.keywords.joinToString()}'"
-            }
+            "Known E-Wallet accounts and their keywords for reference:\n" +
+                activeEWallets.joinToString("\n") { account ->
+                    "- ${account.name}: keywords='${account.keywords.joinToString()}'"
+                }
         } else {
             "Known E-Wallet accounts: (None configured)"
         }
 
         val cardContext = if (cards.isNotEmpty()) {
             "Known Credit Cards for reference:\n" +
-            cards.joinToString("\n") { card -> 
-                "- ${card.name}: last4 digits=${card.last4 ?: "Unknown"}" 
-            }
+                cards.joinToString("\n") { card ->
+                    "- ${card.name}: last4 digits=${card.last4 ?: "Unknown"}"
+                }
         } else {
             "Known Credit Cards: (None configured)"
         }
 
-        val prompt = StringBuilder().apply {
+        val prompt = buildString {
             appendLine("Analyze the attached receipt image. Extract all transactions.")
             appendLine()
             appendLine(ewalletContext)
@@ -284,7 +454,7 @@ class ExpenseRepositoryImpl(
             appendLine("  ],")
             appendLine("  \"confidence\": number")
             appendLine("}")
-        }.toString()
+        }
 
         android.util.Log.d("ExpenseApp", "=== 送給 LLM 的完整 Prompt ===\n$prompt")
 
@@ -299,136 +469,19 @@ class ExpenseRepositoryImpl(
                 )
             )
         )
-        
-        val apiKey = "u3IAD98dwEJHBZKZbAeS2lTpyFuo1lk1wV1mQng5R46locxY"
-        val response = api.chat("Bearer $apiKey", request)
-        val content = response.choices.firstOrNull()?.message?.content ?: throw Exception("Agnes 回傳空內容")
-        
-        val jsonRegex = "```json\\n?(.*?)```".toRegex(RegexOption.DOT_MATCHES_ALL)
-        val match = jsonRegex.find(content)
-        val jsonContent = if (match != null) {
-            match.groupValues[1].trim()
-        } else {
-            val start = content.indexOf('{')
-            val end = content.lastIndexOf('}')
-            if (start != -1 && end != -1 && end > start) {
-                content.substring(start, end + 1).trim()
-            } else {
-                content.trim()
-            }
+
+        val apiKey = preferenceHelper.getApiKey()
+        if (apiKey.isBlank()) {
+            throw Exception("请先在設定中輸入 Agnes API Key")
         }
-        
-        return try {
-            gson.fromJson(jsonContent, AgnesResponseDto::class.java)
-        } catch (e: Exception) {
-            throw Exception("解析 Agnes 回傳的 JSON 失敗: ${e.message}. Content: $jsonContent")
-        }
+        val response = agnesApi.chat("Bearer $apiKey", request)
+        val content = response.choices.firstOrNull()?.message?.content
+            ?: throw Exception("Agnes 回傳空內容")
+
+        return parseJsonContent(content)
     }
 
-    override suspend fun parseVoiceInput(
-        voiceText: String,
-        ewalletAccounts: List<EWalletAccount>,
-        creditCards: List<CreditCard>
-    ): AgnesResponseDto {
-        val cards = if (creditCards.isNotEmpty()) creditCards else creditCardDao.getAll().map { it.toDomain() }.filter { it.isActive }
-        val activeEWallets = if (ewalletAccounts.isNotEmpty()) ewalletAccounts else eWalletAccountDao.getAll().map { it.toDomain() }.filter { it.isActive }
-
-        val ewalletContext = if (activeEWallets.isNotEmpty()) {
-            "【已知電子支付帳戶】\n" + 
-            activeEWallets.joinToString("\n") { account -> 
-                "- ${account.name}: keywords='${account.keywords.joinToString()}'"
-            }
-        } else {
-            "【已知電子支付帳戶】：(未設定)"
-        }
-
-        val cardContext = if (cards.isNotEmpty()) {
-            "【已知信用卡】\n" +
-            cards.joinToString("\n") { card -> 
-                "- ${card.name} (尾數${card.last4 ?: "未知"})" 
-            }
-        } else {
-            "【已知信用卡】：(未設定)"
-        }
-
-        // 計算今天日期
-        val todayDate = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(Date())
-        
-        val prompt = StringBuilder().apply {
-            appendLine("請分析以下消費描述，提取所有交易資訊。")
-            appendLine()
-            appendLine("用户语音输入：$voiceText")
-            appendLine()
-            appendLine(ewalletContext)
-            appendLine()
-            appendLine(cardContext)
-            appendLine()
-            appendLine("【判斷規則 - 嚴格遵守】")
-            appendLine()
-            appendLine("1. 搜尋語句中是否包含電子支付關鍵字（如 Line Pay、街口、全支付等）")
-            appendLine("2. 搜尋語句中是否提及信用卡/簽帳金融卡/金融卡")
-            appendLine("3. 根據以下規則設定 method 和 account：")
-            appendLine()
-            appendLine("情況 A：有電子支付 + 有信用卡")
-            appendLine("→ method = 電子支付名稱（如 \"Line Pay\"）")
-            appendLine("→ account = 信用卡名稱（如 \"玉山銀行\"）")
-            appendLine("→ 表示透過 Line Pay 綁定玉山銀行信用卡消費")
-            appendLine()
-            appendLine("情況 B：有電子支付 + 無信用卡")
-            appendLine("→ method = 電子支付名稱")
-            appendLine("→ account = null")
-            appendLine("→ 可能從電子支付餘額扣除")
-            appendLine()
-            appendLine("情況 C：無電子支付 + 有信用卡")
-            appendLine("→ method = \"一般刷卡\"")
-            appendLine("→ account = 信用卡名稱")
-            appendLine()
-            appendLine("情況 D：無電子支付 + 無信用卡")
-            appendLine("→ method = \"現金\"")
-            appendLine("→ account = null")
-            appendLine()
-            appendLine("其他規則：")
-            appendLine("- 日期如未提及，使用今天日期 (YYYY/MM/DD)，今天是: $todayDate")
-            appendLine("- 幣別如未提及，預設為 TWD")
-            appendLine("- 描述需轉換為繁體中文")
-            appendLine("- 如果有多个消费项目，分别列出")
-            appendLine()
-            appendLine("嚴格輸出 JSON：")
-            appendLine("{")
-            appendLine("  \"schema_version\": 1,")
-            appendLine("  \"transactions\": [")
-            appendLine("    {")
-            appendLine("      \"method\": \"string\",")
-            appendLine("      \"account\": \"string or null\",")
-            appendLine("      \"card_last4\": \"string or null\",")
-            appendLine("      \"amount\": number,")
-            appendLine("      \"amount_twd\": number,")
-            appendLine("      \"currency\": \"string\",")
-            appendLine("      \"date\": \"string\",")
-            appendLine("      \"description\": \"string\"")
-            appendLine("    }")
-            appendLine("  ],")
-            appendLine("  \"confidence\": number")
-            appendLine("}")
-        }.toString()
-
-        android.util.Log.d("ExpenseApp", "=== 語音輸入 Prompt ===\n$prompt")
-
-        val request = AgnesRequest(
-            messages = listOf(
-                AgnesMessage(
-                    role = "user",
-                    content = listOf(
-                        AgnesContent(type = "text", text = prompt)
-                    )
-                )
-            )
-        )
-        
-        val apiKey = "u3IAD98dwEJHBZKZbAeS2lTpyFuo1lk1wV1mQng5R46locxY"
-        val response = api.chat("Bearer $apiKey", request)
-        val content = response.choices.firstOrNull()?.message?.content ?: throw Exception("Agnes 回傳空內容")
-        
+    private fun parseJsonContent(content: String): AgnesResponseDto {
         val jsonRegex = "```json\\n?(.*?)```".toRegex(RegexOption.DOT_MATCHES_ALL)
         val match = jsonRegex.find(content)
         val jsonContent = if (match != null) {
@@ -442,9 +495,10 @@ class ExpenseRepositoryImpl(
                 content.trim()
             }
         }
-        
+
         return try {
-            gson.fromJson(jsonContent, AgnesResponseDto::class.java) ?: throw Exception("JSON 解析結果為 null")
+            gson.fromJson(jsonContent, AgnesResponseDto::class.java)
+                ?: throw Exception("JSON 解析結果為 null")
         } catch (e: Exception) {
             throw Exception("解析 Agnes 回傳的 JSON 失敗: ${e.message}. Content: $jsonContent")
         }

@@ -3,8 +3,6 @@ package com.leohu.expense.ui.feature.approval
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.leohu.expense.data.remote.db.ExpenseDto
-import com.leohu.expense.data.remote.db.PostgreSQLClient
 import com.leohu.expense.domain.model.*
 import com.leohu.expense.domain.repository.ExpenseRepository
 import com.leohu.expense.domain.usecase.ApprovePaymentRecordUseCase
@@ -28,7 +26,6 @@ class ApprovalDetailViewModel(
     private val repository: ExpenseRepository,
     private val approveUseCase: ApprovePaymentRecordUseCase,
     private val preferenceHelper: PreferenceHelper,
-    private val pgClient: PostgreSQLClient,
     private val recordId: String
 ) : ViewModel() {
 
@@ -81,32 +78,6 @@ class ApprovalDetailViewModel(
             repository.updatePaymentRecord(finalRecord)
         }
     }
-    
-    private suspend fun syncToCloud(record: PaymentRecord) {
-        try {
-            val expenseDto = ExpenseDto(
-                method = record.method,
-                account = record.account,
-                amount = record.amount,
-                amount_twd = record.amountTwd,
-                currency = record.currency,
-                card_last4 = record.cardLast4,
-                consume_date = record.consumeDate,
-                description = record.description,
-                status = record.status.name,
-                created_at = record.createdAt,
-                approved_at = record.approvedAt ?: System.currentTimeMillis()
-            )
-            // 使用 record.id (UUID) 作為標識來更新 PostgreSQL
-            val success = pgClient.updateExpense(record.id, expenseDto)
-            if (!success) {
-                _errorMessage.value = "同步至伺服器失敗，請檢查網路連線與設定"
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            _errorMessage.value = "同步失敗: ${e.message}"
-        }
-    }
 
     fun addTagToRecord(tagId: String) {
         viewModelScope.launch {
@@ -136,9 +107,9 @@ class ApprovalDetailViewModel(
                 
                 // 根據選擇決定是否刪除伺服器記錄
                 if (deleteFromServer && preferenceHelper.getStorageMode() == PreferenceHelper.MODE_CLOUD) {
-                    val success = pgClient.deleteExpense(record.id)
-                    if (!success) {
-                        _errorMessage.value = "刪除伺服器記錄失敗"
+                    val baseUrl = preferenceHelper.getBaseUrl()
+                    if (baseUrl.isNotEmpty()) {
+                        repository.syncToN8nDelete(record.id, baseUrl)
                     }
                 }
                 
@@ -161,7 +132,10 @@ class ApprovalDetailViewModel(
                 } else {
                     // 如果已經是已核准狀態，且使用者選擇同步，則執行更新
                     if (syncWithServer && preferenceHelper.getStorageMode() == PreferenceHelper.MODE_CLOUD) {
-                        syncToCloud(record)
+                        val baseUrl = preferenceHelper.getBaseUrl()
+                        if (baseUrl.isNotEmpty()) {
+                            repository.syncToN8nUpdate(record, baseUrl)
+                        }
                     }
                 }
                 
@@ -184,12 +158,11 @@ class ApprovalDetailViewModel(
         private val repository: ExpenseRepository,
         private val approveUseCase: ApprovePaymentRecordUseCase,
         private val preferenceHelper: PreferenceHelper,
-        private val pgClient: PostgreSQLClient,
         private val recordId: String
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return ApprovalDetailViewModel(repository, approveUseCase, preferenceHelper, pgClient, recordId) as T
+            return ApprovalDetailViewModel(repository, approveUseCase, preferenceHelper, recordId) as T
         }
     }
 }

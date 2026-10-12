@@ -14,13 +14,14 @@ class PreferenceHelper(private val context: Context) {
         const val MODE_LOCAL = "local"
         const val KEY_ENABLE_PRE_PARSE_EDIT = "enable_pre_parse_edit"
         
-        // PostgreSQL Profile 相關
-        const val KEY_PG_PROFILES = "pg_profiles"
-        const val KEY_CURRENT_PG_PROFILE_ID = "current_pg_profile_id"
+        // N8n Webhook 設定
+        const val KEY_BASE_URL = "n8n_base_url"
+        // Agnes API Key 設定
+        const val KEY_AGES_API_KEY = "agnes_api_key"
     }
     
     fun getStorageMode(): String = 
-        prefs.getString(KEY_STORAGE_MODE, MODE_CLOUD) ?: MODE_CLOUD
+        prefs.getString(KEY_STORAGE_MODE, MODE_LOCAL) ?: MODE_LOCAL
     
     fun setStorageMode(mode: String) {
         prefs.edit().putString(KEY_STORAGE_MODE, mode).apply()
@@ -37,16 +38,15 @@ class PreferenceHelper(private val context: Context) {
         emit(getBool(key, default))
     }
     
-    // PostgreSQL 相關方法
-    fun savePgProfiles(json: String) {
-        prefs.edit().putString(KEY_PG_PROFILES, json).apply()
+    // N8n Webhook Base URL
+    fun getBaseUrl(): String = prefs.getString(KEY_BASE_URL, "") ?: ""
+    fun saveBaseUrl(url: String) {
+        prefs.edit().putString(KEY_BASE_URL, url).apply()
     }
     
-    fun getPgProfilesJson(): String? = prefs.getString(KEY_PG_PROFILES, null)
-    
-    fun setCurrentPgProfileId(profileId: String) {
-        prefs.edit().putString(KEY_CURRENT_PG_PROFILE_ID, profileId).apply()
+    // Agnes API Key
+    fun getApiKey(): String = prefs.getString(KEY_AGES_API_KEY, "") ?: ""
+    fun saveApiKey(key: String) {
+        prefs.edit().putString(KEY_AGES_API_KEY, key).apply()
     }
-    
-    fun getCurrentPgProfileId(): String? = prefs.getString(KEY_CURRENT_PG_PROFILE_ID, null)
 }

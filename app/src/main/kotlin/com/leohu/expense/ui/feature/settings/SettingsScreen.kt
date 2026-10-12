@@ -9,6 +9,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,6 +19,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.leohu.expense.domain.model.Tag
+import com.leohu.expense.util.PreferenceHelper
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -25,19 +29,24 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToCards: () -> Unit,
-    onNavigateToEWallets: () -> Unit,
-    onNavigateToDatabaseSettings: () -> Unit
+    onNavigateToEWallets: () -> Unit
 ) {
     val context = LocalContext.current
     var retentionDays by remember { mutableStateOf("90") }
     var storageMode by remember { mutableStateOf(viewModel.storageMode) }
     var showTagDialog by remember { mutableStateOf(false) }
+    var showApiSettings by remember { mutableStateOf(false) }
+    var baseUrl by remember { mutableStateOf(viewModel.baseUrl) }
+    var apiKey by remember { mutableStateOf(viewModel.apiKey) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
     // 監聽開關狀態變化
     val enablePreParseEdit by viewModel.enablePreParseEdit.collectAsState()
+
+    // 檢查是否有設定 BaseUrl
+    val hasCloudConfig = viewModel.baseUrl.isNotEmpty()
 
     // Export Backup Launcher (JSON)
     val exportLauncher = rememberLauncherForActivityResult(
@@ -72,7 +81,7 @@ fun SettingsScreen(
         uri?.let {
             viewModel.exportToCsv(context, it) { success, error ->
                 scope.launch {
-                    snackbarHostState.showSnackbar(if (success) "CSV匯出成功" else "匯入失敗: $error")
+                    snackbarHostState.showSnackbar(if (success) "CSV匯出成功" else "匯出失敗: $error")
                 }
             }
         }
@@ -84,6 +93,27 @@ fun SettingsScreen(
             onAdd = { name ->
                 viewModel.addTag(name, "#FFF9C4")
                 showTagDialog = false
+            }
+        )
+    }
+
+    if (showApiSettings) {
+        ApiSettingsDialog(
+            baseUrl = baseUrl,
+            apiKey = apiKey,
+            onDismiss = { 
+                showApiSettings = false
+                // 恢復原值
+                baseUrl = viewModel.baseUrl
+                apiKey = viewModel.apiKey
+            },
+            onSave = { newBaseUrl, newApiKey ->
+                viewModel.saveBaseUrl(newBaseUrl)
+                viewModel.saveApiKey(newApiKey)
+                showApiSettings = false
+                scope.launch {
+                    snackbarHostState.showSnackbar("設定已儲存")
+                }
             }
         )
     }
@@ -164,6 +194,8 @@ fun SettingsScreen(
                 }
             }
 
+            HorizontalDivider()
+
             // Pre-parse Edit Toggle
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -202,12 +234,18 @@ fun SettingsScreen(
                     ) {
                         OutlinedButton(
                             onClick = { 
+                                if (!hasCloudConfig) {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("請先在 N8n Webhook 設定中填入 Base URL")
+                                    }
+                                    return@OutlinedButton
+                                }
                                 storageMode = "cloud"
                                 viewModel.setStorageMode("cloud")
                                 scope.launch { snackbarHostState.showSnackbar("已切換至雲端儲存") }
                             },
                             modifier = Modifier.weight(1f),
-                            enabled = storageMode != "cloud"
+                            enabled = !hasCloudConfig || storageMode != "cloud"
                         ) {
                             Text("雲端儲存")
                         }
@@ -224,21 +262,64 @@ fun SettingsScreen(
                         }
                     }
                     Text(
-                        if (storageMode == "cloud") "目前：雲端（核准後上傳至伺服器）" else "目前：本地（核准後僅保存於手機上）",
+                        if (storageMode == "cloud") "目前：雲端（核准後上傳至 n8n）" else "目前：本地（核准後僅保存於手機上）",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (!hasCloudConfig) {
+                        Text(
+                            "提示：雲端模式需要先設定 N8n Webhook 連線",
+                            style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
             HorizontalDivider()
 
-            // Database Settings Button
+            // Agnes API Key Settings Button
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Agnes AI 設定", style = MaterialTheme.typography.titleSmall)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = apiKey,
+                        onValueChange = { apiKey = it },
+                        label = { Text("API Key") },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("請輸入 Agnes API Key") },
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "說明：從 agnes-ai.com 取得您的 API Key，用於呼叫 Vision LLM 解析收據。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            viewModel.saveApiKey(apiKey)
+                            scope.launch {
+                                snackbarHostState.showSnackbar("API Key 已儲存")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("儲存 API Key")
+                    }
+                }
+            }
+
+            HorizontalDivider()
+
+            // N8n Webhook Settings Button
             Button(
-                onClick = { onNavigateToDatabaseSettings() },
+                onClick = { showApiSettings = true },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("數據庫設置")
+                Text("N8n Webhook 設定")
             }
 
             HorizontalDivider()
@@ -287,20 +368,18 @@ fun SettingsScreen(
                 Text("匯入備份")
             }
 
-            // CSV Export
-            if (storageMode == "local") {
-                OutlinedButton(
-                    onClick = { csvLauncher.launch("expense_records_${System.currentTimeMillis()}.csv") },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("匯出歷史記錄 (CSV)")
-                }
-                Text(
-                    "匯出的 CSV 檔案包含：日期、金額、幣別、支付方式、帳戶、末四碼、商家名稱、標籤。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            // CSV Export - available in both modes now
+            OutlinedButton(
+                onClick = { csvLauncher.launch("expense_records_${System.currentTimeMillis()}.csv") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("匯出歷史記錄 (CSV)")
             }
+            Text(
+                "匯出的 CSV 檔案包含：日期、金額、幣別、約當台幣、支付方式、帳戶、末四碼、商家名稱、標籤。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             HorizontalDivider()
 
@@ -361,6 +440,60 @@ fun SettingsScreen(
 }
 
 @Composable
+private fun ApiSettingsDialog(
+    baseUrl: String,
+    apiKey: String,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit
+) {
+    var inputBaseUrl by remember { mutableStateOf(baseUrl) }
+    var inputApiKey by remember { mutableStateOf(apiKey) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("N8n Webhook 設定") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = inputBaseUrl,
+                    onValueChange = { inputBaseUrl = it },
+                    label = { Text("Base URL") },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("例如: http://leohu.ddns.net:5678/") }
+                )
+                Text(
+                    "說明：配置 n8n webhook 的 Base URL。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = inputApiKey,
+                    onValueChange = { inputApiKey = it },
+                    label = { Text("API Key") },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("請輸入 Agnes API Key") },
+                    singleLine = true
+                )
+                Text(
+                    "說明：從 agnes-ai.com 取得的 API Key，用於 Vision LLM 解析。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(inputBaseUrl, inputApiKey) }) {
+                Text("儲存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
+}
+
+@Composable
 private fun AddTagDialog(
     onDismiss: () -> Unit,
     onAdd: (String) -> Unit
@@ -392,9 +525,7 @@ private fun AddTagDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
+            TextButton(onClick = onDismiss) { Text("取消") }
         }
     )
 }

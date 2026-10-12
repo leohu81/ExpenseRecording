@@ -21,7 +21,11 @@ interface ExpenseRepository {
     suspend fun updatePaymentRecord(record: PaymentRecord)
     suspend fun deletePaymentRecord(record: PaymentRecord)
     suspend fun deleteOldApprovedRecords(days: Int)
-    suspend fun sendToWebhook(record: PaymentRecord)
+    
+    // Cloud sync (n8n webhook)
+    suspend fun syncToN8nInsert(record: PaymentRecord, baseUrl: String): Boolean
+    suspend fun syncToN8nUpdate(record: PaymentRecord, baseUrl: String): Boolean
+    suspend fun syncToN8nDelete(recordId: String, baseUrl: String): Boolean
 
     // Maintenance
     fun getCreditCards(): Flow<List<CreditCard>>

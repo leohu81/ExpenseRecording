@@ -6,8 +6,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.leohu.expense.data.local.db.AppDatabase
 import com.leohu.expense.data.remote.api.AgnesApi
-import com.leohu.expense.data.remote.api.WebhookApi
-import com.leohu.expense.data.remote.db.PostgreSQLClient
+import com.leohu.expense.data.remote.api.N8nWebhookApi
 import com.leohu.expense.data.remote.dto.AgnesResponseDto
 import com.leohu.expense.data.repository.ExpenseRepositoryImpl
 import com.leohu.expense.domain.model.*
@@ -27,9 +26,6 @@ class ExpenseApplication : Application() {
         private set
     
     lateinit var preferenceHelper: PreferenceHelper
-        private set
-        
-    lateinit var pgClient: PostgreSQLClient
         private set
 
     // v3 -> v4: 新增 amountTwd 欄位
@@ -85,29 +81,28 @@ class ExpenseApplication : Application() {
                 .writeTimeout(120, TimeUnit.SECONDS)
                 .build()
 
+            // Agnes API
             val retrofitAgnes = Retrofit.Builder()
                 .baseUrl("https://apihub.agnes-ai.com/v1/")
                 .addConverterFactory(GsonConverterFactory.create())
                 .client(client)
                 .build()
+            val agnesApi = retrofitAgnes.create(AgnesApi::class.java)
 
-            val retrofitWebhook = Retrofit.Builder()
-                .baseUrl("http://leohu.ddns.net:5678/")
+            // N8n Webhook API (base URL from preferences, will be overridden per-call)
+            val baseUrl = preferenceHelper.getBaseUrl().takeIf { it.isNotEmpty() }
+                ?: "http://leohu.ddns.net:5678/"
+            val retrofitN8n = Retrofit.Builder()
+                .baseUrl(baseUrl)
                 .addConverterFactory(GsonConverterFactory.create())
                 .client(client)
                 .build()
+            val n8nApi = retrofitN8n.create(N8nWebhookApi::class.java)
 
-            val agnesApi = retrofitAgnes.create(AgnesApi::class.java)
-            val webhookApi = retrofitWebhook.create(WebhookApi::class.java)
-
-            repository = ExpenseRepositoryImpl(applicationContext, db, agnesApi, webhookApi)
-            
-            // Initialize PostgreSQL client
-            pgClient = PostgreSQLClient(applicationContext)
+            repository = ExpenseRepositoryImpl(applicationContext, db, agnesApi, n8nApi, preferenceHelper)
         } catch (e: Exception) {
             e.printStackTrace()
             repository = createDefaultRepository()
-            pgClient = PostgreSQLClient(applicationContext)
         }
     }
     
@@ -127,7 +122,9 @@ class ExpenseApplication : Application() {
             override suspend fun updatePaymentRecord(record: PaymentRecord) {}
             override suspend fun deletePaymentRecord(record: PaymentRecord) {}
             override suspend fun deleteOldApprovedRecords(days: Int) {}
-            override suspend fun sendToWebhook(record: PaymentRecord) {}
+            override suspend fun syncToN8nInsert(record: PaymentRecord, baseUrl: String): Boolean = false
+            override suspend fun syncToN8nUpdate(record: PaymentRecord, baseUrl: String): Boolean = false
+            override suspend fun syncToN8nDelete(recordId: String, baseUrl: String): Boolean = false
             override fun getCreditCards() = flow { emit(emptyList<CreditCard>()) }
             override suspend fun addCreditCard(card: CreditCard) {}
             override suspend fun deleteCreditCard(card: CreditCard) {}

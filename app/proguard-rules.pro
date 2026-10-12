@@ -6,7 +6,7 @@
 # Keep DTOs and Domain Models for Gson serialization
 -keepclassmembers class com.leohu.expense.data.remote.dto.** { *; }
 -keepclassmembers class com.leohu.expense.domain.model.** { *; }
--keep class com.leohu.expense.data.remote.db.** { *; }
+
 -keep class com.leohu.expense.domain.usecase.** { *; }
 
 # Prevent R8 from removing @SerializedName annotations
@@ -35,7 +35,4 @@
 -keep class * implements com.google.gson.JsonDeserializer
 
 # Keep database models
--keep class com.leohu.expense.data.remote.db.DbProfile { *; }
--keep class com.leohu.expense.data.remote.db.ExpenseItem { *; }
--keep class com.leohu.expense.data.remote.db.ExpenseDto { *; }
--keep interface com.leohu.expense.data.remote.db.N8nApi { *; }
+

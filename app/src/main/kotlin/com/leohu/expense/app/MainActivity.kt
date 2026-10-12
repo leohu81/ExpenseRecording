@@ -27,8 +27,6 @@ import com.leohu.expense.ui.feature.ewallets.EWalletViewModel
 import com.leohu.expense.ui.feature.history.HistoryScreen
 import com.leohu.expense.ui.feature.history.HistoryViewModel
 import com.leohu.expense.ui.feature.home.*
-import com.leohu.expense.ui.feature.settings.DatabaseSettingsScreen
-import com.leohu.expense.ui.feature.settings.DatabaseSettingsViewModel
 import com.leohu.expense.ui.feature.settings.SettingsScreen
 import com.leohu.expense.ui.feature.settings.SettingsViewModel
 import com.leohu.expense.ui.feature.manual.ManualEntryScreen
@@ -61,8 +59,7 @@ class MainActivity : ComponentActivity() {
         
         val repository = (application as ExpenseApplication).repository
         val preferenceHelper = (application as ExpenseApplication).preferenceHelper
-        val pgClient = (application as ExpenseApplication).pgClient
-        val approveUseCase = ApprovePaymentRecordUseCase(repository, preferenceHelper, pgClient)
+        val approveUseCase = ApprovePaymentRecordUseCase(repository, preferenceHelper)
         val cleanupUseCase = CleanupOldApprovedRecordsUseCase(repository)
 
         setContent {
@@ -142,10 +139,9 @@ class MainActivity : ComponentActivity() {
                         arguments = listOf(navArgument("recordId") { type = NavType.StringType })
                     ) { backStackEntry ->
                         val recordId = backStackEntry.arguments?.getString("recordId") ?: return@composable
-                        val pgClient = (application as ExpenseApplication).pgClient
                         val viewModel: ApprovalDetailViewModel = viewModel(
                             key = recordId,
-                            factory = ApprovalDetailViewModel.Factory(repository, approveUseCase, preferenceHelper, pgClient, recordId)
+                            factory = ApprovalDetailViewModel.Factory(repository, approveUseCase, preferenceHelper, recordId)
                         )
                         ApprovalDetailScreen(
                             viewModel = viewModel,
@@ -214,19 +210,7 @@ class MainActivity : ComponentActivity() {
                             viewModel = viewModel,
                             onNavigateBack = { navController.popBackStack() },
                             onNavigateToCards = { navController.navigate("cards") },
-                            onNavigateToEWallets = { navController.navigate("ewallets") },
-                            onNavigateToDatabaseSettings = { navController.navigate("database_settings") }
-                        )
-                    }
-                    composable("database_settings") {
-                        val viewModel: DatabaseSettingsViewModel = viewModel(
-                            factory = DatabaseSettingsViewModel.Factory(
-                                (application as ExpenseApplication).pgClient
-                            )
-                        )
-                        DatabaseSettingsScreen(
-                            viewModel = viewModel,
-                            onNavigateBack = { navController.popBackStack() }
+                            onNavigateToEWallets = { navController.navigate("ewallets") }
                         )
                     }
                 }
